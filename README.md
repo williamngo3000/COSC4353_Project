@@ -1,3 +1,3 @@
 # COSC4353_Project
-:D \n
+:D  
 Idk, I'm confuzzled
