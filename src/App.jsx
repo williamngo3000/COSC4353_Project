@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import EventList from './pages/EventList.jsx';
+
+//Fake starting data, delete later
+import { fakeData as startingData } from './data/eventFake.js';
+
 // first draft of the frontend 
 // this is to fix centering issues with webpage
 const AppStyles = () => (
@@ -538,13 +543,25 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
     );
 };
 
-const EventManagementPage = ({ setPage, setNotification }) => {
+const EventManagementPage = ({ setPage, setNotification, setEvents }) => {
     const [requiredSkills, setRequiredSkills] = useState([]);
     
     const handleEventCreation = (e) => {
         e.preventDefault();
+		//Temp form stuff
+		const formData = new FormData(e.target);
+		const newEvent = {
+			id: Date.now(),
+			name: formData.get('name'),
+			description: formData.get('description'),
+			location: formData.get('location'),
+			requiredSkills,
+			urgency: formData.get('urgency'),
+			date: formData.get('date'),
+		};
+		setEvents(prev => [...prev, newEvent]);
         setNotification({ message: 'Event created successfully!', type: 'success' });
-        setPage('home');
+        setPage('eventList');
     };
 
     return (
@@ -555,15 +572,15 @@ const EventManagementPage = ({ setPage, setNotification }) => {
             <form onSubmit={handleEventCreation} style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
                 <div>
                     <label className="form-label">Event Name</label>
-                    <input type="text" maxLength="100" required className="form-input-full" />
+                    <input name="name" type="text" maxLength="100" required className="form-input-full" />
                 </div>
                  <div>
                     <label className="form-label">Event Description</label>
-                    <textarea rows="5" required className="form-textarea"></textarea>
+                    <textarea name="description" rows="5" required className="form-textarea"></textarea>
                 </div>
                  <div>
                     <label className="form-label">Location</label>
-                    <textarea rows="3" required className="form-textarea"></textarea>
+                    <textarea name="location" rows="3" required className="form-textarea"></textarea>
                 </div>
                 <div className="form-grid form-grid-cols-3">
                     <div>
@@ -572,14 +589,14 @@ const EventManagementPage = ({ setPage, setNotification }) => {
                     </div>
                      <div>
                         <label className="form-label">Urgency</label>
-                         <select required className="form-select">
+                         <select name="urgency" required className="form-select">
                             <option value="">Select Urgency</option>
                             {URGENCY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                     </div>
                      <div>
                         <label className="form-label">Event Date</label>
-                        <input type="date" required className="form-input-full"/>
+                        <input name="date" type="date" required className="form-input-full"/>
                     </div>
                 </div>
                 <div className="form-actions">
@@ -602,6 +619,7 @@ export default function App() {
     const [page, setPage] = useState('home');
     const [loggedInUser, setLoggedInUser] = useState(null);
     const [notification, setNotification] = useState(null);
+    const [events, setEvents] = useState(startingData);
     
     const handleLogout = () => {
         setLoggedInUser(null);
@@ -624,7 +642,13 @@ export default function App() {
                  if (!loggedInUser || loggedInUser.role !== 'admin') {
                      console.warn("Attempted to access admin page without being logged in as admin.");
                  }
-                return <EventManagementPage setPage={setPage} setNotification={setNotification} />;
+                return <EventManagementPage setPage={setPage} setNotification={setNotification} setEvents={setEvents} />;
+                case 'eventList':
+                    if (!loggedInUser) {
+                        setPage('login');
+                        return null;
+                    }
+                return <EventList events={events} />;
             case 'home':
             default:
                 return <HomePage />;
@@ -646,6 +670,7 @@ export default function App() {
                         
                         {loggedInUser ? (
                             <>
+                                <button onClick={() => setPage('eventList')} className="nav-button">EventList</button>
                                 {loggedInUser.role === 'admin' ? (
                                      <button onClick={() => setPage('eventManagement')} className="nav-button">Event Management</button>
                                 ) : (
