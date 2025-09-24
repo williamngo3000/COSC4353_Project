@@ -1,0 +1,5 @@
+To run in vite:
+npm install react react-dom tailwindcss
+npm run preview
+
+Will work on syncing Vite with other shabangs
