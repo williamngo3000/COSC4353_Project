@@ -1,7 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 
-export default function EventList({ events }) {
+export default function EventList() {
+	const [events, setEvents] = useState([]);
+
+    useEffect(() => {
+        fetch('http://localhost:5001/events')
+            .then(res => res.json()) // Read the response and covert to json
+            .then(data => {
+                // Map flask get, and format it for our page then set it
+                const formatted = data.map(ev => ({
+                    id: ev.id,
+                    name: ev.event_name,
+                    description: ev.description,
+                    location: ev.location,
+                    requiredSkills: ev.required_skills,
+                    urgency: ev.urgency,
+                    date: ev.event_date,
+                }));
+                setEvents(formatted);
+            })
+            .catch(err => console.error('Failed to load events:', err));
+    }, []);
+
 	return (
 	<div style={{ textAlign: 'center', marginTop: '5rem' }}>
 			<h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937' }}>Event List:</h1>

@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import EventList from './pages/EventList.jsx';
 
-//Fake starting data, delete later
-import { fakeData as startingData } from './data/eventFake.js';
-
 // first draft of the frontend 
 // this is to fix centering issues with webpage
 const AppStyles = () => (
@@ -355,16 +352,49 @@ const CustomMultiSelect = ({ options, selected, onChange, placeholder }) => {
 
 // Page Components
 
-const LoginPage = ({ setPage, setLoggedInUser }) => {
-    const handleLogin = (e) => {
+const LoginPage = ({ setPage, setLoggedInUser, setNotification }) => {
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState("");
+
+    const handleLogin = async (e) => {
         e.preventDefault();
+        setErr("");
+        setLoading(true);
         const email = e.target.email.value;
-        if (email.toLowerCase() === 'admin@example.com') {
-            setLoggedInUser({ email: email, role: 'admin', profileComplete: true });
-            setPage('eventManagement');
-        } else {
-            setLoggedInUser({ email: email, role: 'volunteer', profileComplete: false });
-            setPage('profile');
+        const password = e.target.password.value;
+
+        try{
+            const res = await fetch("http://localhost:5001/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({email, password})
+            });
+
+            const data = await res.json();
+            
+            if(!res.ok){
+                //If invalid email or password
+                throw new Error(data?.message);
+            }
+
+            const user = data.user;
+            setLoggedInUser(user);
+            setNotification({ message: "Login successful!", type: "success" });
+            if(user.role === "admin") {
+                setPage("eventManagement");
+            } else if (user.profileComplete){
+                setPage("eventList");
+            } else {
+                setPage("profile");
+            }
+
+
+
+        } catch (e){
+            setErr(e.message);
+            setNotification({ message: e.message || "Error: failed to log in", type: "error" });
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -381,7 +411,7 @@ const LoginPage = ({ setPage, setLoggedInUser }) => {
                 </div>
                 <div className="form-input-group">
                     <LockIcon className="form-input-icon" />
-                    <input type="password" placeholder="Password" required className="form-input" />
+                    <input type="password" name="password" placeholder="Password" required className="form-input" />
                 </div>
                 <button type="submit" className="form-button">Login</button>
                 <p className="form-footer-text">
@@ -397,13 +427,19 @@ const LoginPage = ({ setPage, setLoggedInUser }) => {
 };
 
 const RegisterPage = ({ setPage, setLoggedInUser, setNotification }) => {
-    const handleRegister = (e) => {
+
+    const [loading, setLoading] = useState(false);
+
+    const handleRegister = async (e) => {
         e.preventDefault();
+        setLoading(true);
+        const email = e.target.email.value;
         const password = e.target.password.value;
         const confirmPassword = e.target.confirmPassword.value;
 
         if (password !== confirmPassword) {
             setNotification({ message: 'Passwords do not match. Please try again.', type: 'error' });
+            setLoading(false);
             return;
         }
 
@@ -416,13 +452,37 @@ const RegisterPage = ({ setPage, setLoggedInUser, setNotification }) => {
                 message: 'Password must be at least 8 characters, and include a number and an uppercase letter.', 
                 type: 'error' 
             });
+            setLoading(false);
             return;
         }
         // --- End of Validation ---
 
-        setLoggedInUser({ email: e.target.email.value, role: 'volunteer', profileComplete: false });
-        setNotification({ message: 'Registration successful! Please complete your profile.', type: 'success' });
-        setPage('profile');
+        try {
+            const res = await fetch("http://localhost:5001/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json"},
+                body: JSON.stringify({email, password}),
+
+            });
+
+            const data = await res.json();
+            if(!res.ok){
+                throw new Error(data?.message);
+            }
+
+            setLoggedInUser(data.user);
+            setNotification({ message: 'Registration successful! Please complete your profile.', type: 'success' });
+            setPage('profile');
+            
+        } catch(err){
+            setNotification({ message: err.message || "Error: registration failed", type: "error" });
+        } finally {
+            setLoading(false);
+        }
+
+        //setLoggedInUser({ email: e.target.email.value, role: 'volunteer', profileComplete: false });
+        
+        
     };
 
     return (
@@ -455,14 +515,78 @@ const RegisterPage = ({ setPage, setLoggedInUser, setNotification }) => {
 };
 
 const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }) => {
+
+    const [loading, setLoading] = useState(true);
+
+    //Usestates to change fields if they already have info
+    const [fullName, setFullName] = useState("");
+    const [address1, setAddress1] = useState("");
+    const [address2, setAddress2] = useState("");
+    const [city, setCity] = useState("");
+    const [stateCode, setStateCode] = useState("");
+    const [zip, setZip] = useState("");
+    const [preferences, setPreferences] = useState("");
     const [skills, setSkills] = useState([]);
     const [availability, setAvailability] = useState([]);
 
-    const handleProfileUpdate = (e) => {
+    //Try and load up any data they might have
+    useEffect(() => {
+        if (!loggedInUser?.email) return;
+        (async () => {
+        try {
+            const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`);
+            // If no profile yet
+            if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
+            const p = await res.json();
+
+            setFullName(p.full_name || "");
+            setAddress1(p.address1 || "");
+            setAddress2(p.address2 || "");
+            setCity(p.city || "");
+            setStateCode(p.state || "");
+            setZip(p.zip_code || "");
+            setPreferences(p.preferences || "");
+            setSkills(Array.isArray(p.skills) ? p.skills : []);
+            setAvailability(Array.isArray(p.availability) ? p.availability : []);
+        } catch (e) {
+            setNotification({ message: e.message || "Error loading profile", type: "error" });
+        } finally {
+            setLoading(false);
+        }
+        })();
+    }, [loggedInUser?.email, setNotification]);
+
+    const handleProfileUpdate = async (e) => {
         e.preventDefault();
+
+
+        const profileForm = {
+        full_name: fullName,
+        address1,
+        address2,
+        city,
+        state: stateCode,
+        zip_code: zip,
+        skills,
+        preferences,
+        availability,
+        };
+
+        try {
+        const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(profileForm),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message);
+
         setLoggedInUser({ ...loggedInUser, profileComplete: true });
-        setNotification({ message: 'Profile updated successfully!', type: 'success' });
-        setPage('home');
+        setNotification({ message: "Profile updated successfully!", type: "success" });
+        setPage("home");
+        } catch (e) {
+        setNotification({ message: e.message || "Profile update failed", type: "error" });
+        }
     };
     
     const addAvailabilityDate = () => {
@@ -479,36 +603,36 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
 
     return (
         <div className="content-card">
-            <h2>Complete Your Profile</h2>
+            <h2>{loggedInUser?.profileComplete ? "Edit Your Profile" : "Complete Your Profile"}</h2>
             <p>This information helps us match you with the right events.</p>
             
             <form onSubmit={handleProfileUpdate} className="form-grid">
                 <div className="form-grid-col-span-2">
                     <label className="form-label">Full Name</label>
-                    <input type="text" maxLength="50" required className="form-input-full" />
+                    <input type="text" maxLength="50" required className="form-input-full" value={fullName} onChange={(e) => setFullName(e.target.value)} />
                 </div>
                 <div>
                     <label className="form-label">Address 1</label>
-                    <input type="text" maxLength="100" required className="form-input-full" />
+                    <input type="text" maxLength="100" required className="form-input-full" value={address1} onChange={(e) => setAddress1(e.target.value)} />
                 </div>
                 <div>
                     <label className="form-label">Address 2 (Optional)</label>
-                    <input type="text" maxLength="100" className="form-input-full" />
+                    <input type="text" maxLength="100" className="form-input-full" value={address2} onChange={(e) => setAddress2(e.target.value)} />
                 </div>
                  <div>
                     <label className="form-label">City</label>
-                    <input type="text" maxLength="100" required className="form-input-full" />
+                    <input type="text" maxLength="100" required className="form-input-full" value={city} onChange={(e) => setCity(e.target.value)} />
                 </div>
                 <div>
                     <label className="form-label">State</label>
-                    <select required className="form-select">
+                    <select required className="form-select" value={stateCode} onChange={(e) => setStateCode(e.target.value)}>
                         <option value="">Select a State</option>
                         {US_STATES.map(state => <option key={state.code} value={state.code}>{state.name}</option>)}
                     </select>
                 </div>
                 <div>
                     <label className="form-label">Zip Code</label>
-                    <input type="text" minLength="5" maxLength="9" required className="form-input-full" />
+                    <input type="text" minLength="5" maxLength="9" required className="form-input-full" value={zip} onChange={(e) => setZip(e.target.value)} />
                 </div>
                 <div className="form-grid-col-span-2">
                     <label className="form-label">Skills</label>
@@ -516,7 +640,7 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
                 </div>
                  <div className="form-grid-col-span-2">
                     <label className="form-label">Preferences (Optional)</label>
-                    <textarea rows="4" className="form-textarea"></textarea>
+                    <textarea rows="4" className="form-textarea" value={preferences} onChange={(e) => setPreferences(e.target.value)} ></textarea>
                 </div>
                 <div className="form-grid-col-span-2">
                     <label className="form-label">Availability</label>
@@ -543,26 +667,42 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
     );
 };
 
-const EventManagementPage = ({ setPage, setNotification, setEvents }) => {
+const EventManagementPage = ({ setPage, setNotification }) => {
     const [requiredSkills, setRequiredSkills] = useState([]);
     
-    const handleEventCreation = (e) => {
-        e.preventDefault();
-		//Temp form stuff
-		const formData = new FormData(e.target);
-		const newEvent = {
-			id: Date.now(),
-			name: formData.get('name'),
-			description: formData.get('description'),
-			location: formData.get('location'),
-			requiredSkills,
-			urgency: formData.get('urgency'),
-			date: formData.get('date'),
-		};
-		setEvents(prev => [...prev, newEvent]);
-        setNotification({ message: 'Event created successfully!', type: 'success' });
-        setPage('eventList');
+    const handleEventCreation = async (e) => {
+    e.preventDefault();
+
+    // Build payload in the shape Flask expects
+    const formData = new FormData(e.target);
+    //Get form data and match it to flask names
+    const eventFormData = {
+        event_name: formData.get('name'),
+        description: formData.get('description'),
+        location: formData.get('location'),
+        required_skills: requiredSkills,
+        urgency: formData.get('urgency'),
+        event_date: formData.get('date'),
     };
+
+    try {
+        //Set up post
+        const res = await fetch('http://localhost:5001/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventFormData),
+        });
+        const data = await res.json();
+        //Try to post
+        if (!res.ok) throw new Error(data?.message || 'Request failed');
+
+        setPage('eventList');
+    } catch (err) {
+        console.error(err);
+        setNotification({ message: `Create failed: ${err.message}`, type: 'error' });
+    }
+    };
+
 
     return (
         <div className="content-card">
@@ -619,7 +759,7 @@ export default function App() {
     const [page, setPage] = useState('home');
     const [loggedInUser, setLoggedInUser] = useState(null);
     const [notification, setNotification] = useState(null);
-    const [events, setEvents] = useState(startingData);
+    const [events, setEvents] = useState([]);
     
     const handleLogout = () => {
         setLoggedInUser(null);
@@ -629,7 +769,7 @@ export default function App() {
     const renderPage = () => {
         switch (page) {
             case 'login':
-                return <LoginPage setPage={setPage} setLoggedInUser={setLoggedInUser} />;
+                return <LoginPage setPage={setPage} setLoggedInUser={setLoggedInUser} setNotification={setNotification} />;
             case 'register':
                 return <RegisterPage setPage={setPage} setLoggedInUser={setLoggedInUser} setNotification={setNotification} />;
             case 'profile':
@@ -648,7 +788,7 @@ export default function App() {
                         setPage('login');
                         return null;
                     }
-                return <EventList events={events} />;
+                return <EventList />;
             case 'home':
             default:
                 return <HomePage />;
