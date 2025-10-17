@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import EventList from './pages/EventList.jsx';
 
+
+
 // first draft of the frontend 
 // this is to fix centering issues with webpage
 const AppStyles = () => (
@@ -262,19 +264,19 @@ const URGENCY_LEVELS = ['Low', 'Medium', 'High', 'Critical'];
 
 
 const ChevronDownIcon = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6" /></svg>
 );
 const MailIcon = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
 );
 const LockIcon = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
 );
 const CheckIcon = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5" /></svg>
 );
 const XIcon = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
 );
 
 
@@ -363,16 +365,16 @@ const LoginPage = ({ setPage, setLoggedInUser, setNotification }) => {
         const email = e.target.email.value;
         const password = e.target.password.value;
 
-        try{
+        try {
             const res = await fetch("http://localhost:5001/login", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({email, password})
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
             });
 
             const data = await res.json();
-            
-            if(!res.ok){
+
+            if (!res.ok) {
                 //If invalid email or password
                 throw new Error(data?.message);
             }
@@ -380,9 +382,9 @@ const LoginPage = ({ setPage, setLoggedInUser, setNotification }) => {
             const user = data.user;
             setLoggedInUser(user);
             setNotification({ message: "Login successful!", type: "success" });
-            if(user.role === "admin") {
+            if (user.role === "admin") {
                 setPage("eventManagement");
-            } else if (user.profileComplete){
+            } else if (user.profileComplete) {
                 setPage("eventList");
             } else {
                 setPage("profile");
@@ -390,7 +392,7 @@ const LoginPage = ({ setPage, setLoggedInUser, setNotification }) => {
 
 
 
-        } catch (e){
+        } catch (e) {
             setErr(e.message);
             setNotification({ message: e.message || "Error: failed to log in", type: "error" });
         } finally {
@@ -418,7 +420,7 @@ const LoginPage = ({ setPage, setLoggedInUser, setNotification }) => {
                     Not registered yet?{' '}
                     <button type="button" onClick={() => setPage('register')} className="form-footer-link">Register</button>
                 </p>
-                <p style={{textAlign: 'center', fontSize: '0.75rem', color: '#a1a1aa', paddingTop: '0.5rem'}}>
+                <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#a1a1aa', paddingTop: '0.5rem' }}>
                     Hint: Use <strong>admin@example.com</strong> to log in as an admin.
                 </p>
             </form>
@@ -448,9 +450,9 @@ const RegisterPage = ({ setPage, setLoggedInUser, setNotification }) => {
         const hasUppercase = /[A-Z]/.test(password);
 
         if (password.length < 8 || !hasNumber || !hasUppercase) {
-            setNotification({ 
-                message: 'Password must be at least 8 characters, and include a number and an uppercase letter.', 
-                type: 'error' 
+            setNotification({
+                message: 'Password must be at least 8 characters, and include a number and an uppercase letter.',
+                type: 'error'
             });
             setLoading(false);
             return;
@@ -460,52 +462,52 @@ const RegisterPage = ({ setPage, setLoggedInUser, setNotification }) => {
         try {
             const res = await fetch("http://localhost:5001/register", {
                 method: "POST",
-                headers: { "Content-Type": "application/json"},
-                body: JSON.stringify({email, password}),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
 
             });
 
             const data = await res.json();
-            if(!res.ok){
+            if (!res.ok) {
                 throw new Error(data?.message);
             }
 
             setLoggedInUser(data.user);
             setNotification({ message: 'Registration successful! Please complete your profile.', type: 'success' });
             setPage('profile');
-            
-        } catch(err){
+
+        } catch (err) {
             setNotification({ message: err.message || "Error: registration failed", type: "error" });
         } finally {
             setLoading(false);
         }
 
         //setLoggedInUser({ email: e.target.email.value, role: 'volunteer', profileComplete: false });
-        
-        
+
+
     };
 
     return (
         <div className="form-card">
-             <div className="form-header">
+            <div className="form-header">
                 <h2>Create Your Account</h2>
                 <p>Join our community of volunteers and administrators.</p>
             </div>
             <form onSubmit={handleRegister} className="form-container">
                 <div className="form-input-group">
-                     <MailIcon className="form-input-icon" />
+                    <MailIcon className="form-input-icon" />
                     <input type="email" name="email" placeholder="Email (username)" required className="form-input" />
                 </div>
                 <div className="form-input-group">
-                     <LockIcon className="form-input-icon" />
+                    <LockIcon className="form-input-icon" />
                     <input type="password" name="password" placeholder="Password" required className="form-input" />
                 </div>
                 <div className="form-input-group">
-                     <LockIcon className="form-input-icon" />
+                    <LockIcon className="form-input-icon" />
                     <input type="password" name="confirmPassword" placeholder="Confirm Password" required className="form-input" />
                 </div>
                 <button type="submit" className="form-button">Register</button>
-                 <p className="form-footer-text">
+                <p className="form-footer-text">
                     Already have an account?{' '}
                     <button type="button" onClick={() => setPage('login')} className="form-footer-link">Login</button>
                 </p>
@@ -533,26 +535,26 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
     useEffect(() => {
         if (!loggedInUser?.email) return;
         (async () => {
-        try {
-            const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`);
-            // If no profile yet
-            if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
-            const p = await res.json();
+            try {
+                const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`);
+                // If no profile yet
+                if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
+                const p = await res.json();
 
-            setFullName(p.full_name || "");
-            setAddress1(p.address1 || "");
-            setAddress2(p.address2 || "");
-            setCity(p.city || "");
-            setStateCode(p.state || "");
-            setZip(p.zip_code || "");
-            setPreferences(p.preferences || "");
-            setSkills(Array.isArray(p.skills) ? p.skills : []);
-            setAvailability(Array.isArray(p.availability) ? p.availability : []);
-        } catch (e) {
-            setNotification({ message: e.message || "Error loading profile", type: "error" });
-        } finally {
-            setLoading(false);
-        }
+                setFullName(p.full_name || "");
+                setAddress1(p.address1 || "");
+                setAddress2(p.address2 || "");
+                setCity(p.city || "");
+                setStateCode(p.state || "");
+                setZip(p.zip_code || "");
+                setPreferences(p.preferences || "");
+                setSkills(Array.isArray(p.skills) ? p.skills : []);
+                setAvailability(Array.isArray(p.availability) ? p.availability : []);
+            } catch (e) {
+                setNotification({ message: e.message || "Error loading profile", type: "error" });
+            } finally {
+                setLoading(false);
+            }
         })();
     }, [loggedInUser?.email, setNotification]);
 
@@ -561,34 +563,34 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
 
 
         const profileForm = {
-        full_name: fullName,
-        address1,
-        address2,
-        city,
-        state: stateCode,
-        zip_code: zip,
-        skills,
-        preferences,
-        availability,
+            full_name: fullName,
+            address1,
+            address2,
+            city,
+            state: stateCode,
+            zip_code: zip,
+            skills,
+            preferences,
+            availability,
         };
 
         try {
-        const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(profileForm),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message);
+            const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(loggedInUser.email)}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(profileForm),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.message);
 
-        setLoggedInUser({ ...loggedInUser, profileComplete: true });
-        setNotification({ message: "Profile updated successfully!", type: "success" });
-        setPage("home");
+            setLoggedInUser({ ...loggedInUser, profileComplete: true });
+            setNotification({ message: "Profile updated successfully!", type: "success" });
+            setPage("home");
         } catch (e) {
-        setNotification({ message: e.message || "Profile update failed", type: "error" });
+            setNotification({ message: e.message || "Profile update failed", type: "error" });
         }
     };
-    
+
     const addAvailabilityDate = () => {
         const dateInput = document.getElementById('availability-date');
         if (dateInput.value && !availability.includes(dateInput.value)) {
@@ -605,7 +607,7 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
         <div className="content-card">
             <h2>{loggedInUser?.profileComplete ? "Edit Your Profile" : "Complete Your Profile"}</h2>
             <p>This information helps us match you with the right events.</p>
-            
+
             <form onSubmit={handleProfileUpdate} className="form-grid">
                 <div className="form-grid-col-span-2">
                     <label className="form-label">Full Name</label>
@@ -619,7 +621,7 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
                     <label className="form-label">Address 2 (Optional)</label>
                     <input type="text" maxLength="100" className="form-input-full" value={address2} onChange={(e) => setAddress2(e.target.value)} />
                 </div>
-                 <div>
+                <div>
                     <label className="form-label">City</label>
                     <input type="text" maxLength="100" required className="form-input-full" value={city} onChange={(e) => setCity(e.target.value)} />
                 </div>
@@ -638,22 +640,22 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
                     <label className="form-label">Skills</label>
                     <CustomMultiSelect options={SKILLS_LIST} selected={skills} onChange={setSkills} placeholder="Select your skills" />
                 </div>
-                 <div className="form-grid-col-span-2">
+                <div className="form-grid-col-span-2">
                     <label className="form-label">Preferences (Optional)</label>
                     <textarea rows="4" className="form-textarea" value={preferences} onChange={(e) => setPreferences(e.target.value)} ></textarea>
                 </div>
                 <div className="form-grid-col-span-2">
                     <label className="form-label">Availability</label>
                     <div className="availability-controls">
-                         <input type="date" id="availability-date" className="form-input-full availability-input"/>
-                         <button type="button" onClick={addAvailabilityDate} className="button-add">Add Date</button>
+                        <input type="date" id="availability-date" className="form-input-full availability-input" />
+                        <button type="button" onClick={addAvailabilityDate} className="button-add">Add Date</button>
                     </div>
-                     <div className="availability-tags">
+                    <div className="availability-tags">
                         {availability.map(date => (
                             <div key={date} className="availability-tag">
                                 {date}
                                 <button type="button" onClick={() => removeAvailabilityDate(date)}>
-                                    <XIcon className="availability-tag-icon"/>
+                                    <XIcon className="availability-tag-icon" />
                                 </button>
                             </div>
                         ))}
@@ -667,40 +669,211 @@ const ProfilePage = ({ setPage, loggedInUser, setLoggedInUser, setNotification }
     );
 };
 
-const EventManagementPage = ({ setPage, setNotification }) => {
-    const [requiredSkills, setRequiredSkills] = useState([]);
-    
-    const handleEventCreation = async (e) => {
-    e.preventDefault();
+// helper to pretty-date
+const fmt = (dStr) => new Date(dStr).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 
-    // Build payload in the shape Flask expects
-    const formData = new FormData(e.target);
-    //Get form data and match it to flask names
-    const eventFormData = {
-        event_name: formData.get('name'),
-        description: formData.get('description'),
-        location: formData.get('location'),
-        required_skills: requiredSkills,
-        urgency: formData.get('urgency'),
-        event_date: formData.get('date'),
+function EventDetail({ event, onBack, loggedInUser, setNotification }) {
+    const [localEvent, setLocalEvent] = useState(event || {});
+    const [displayNames, setDisplayNames] = useState([]);
+
+    useEffect(() => {
+        if (!event?.id) return;
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const res = await fetch(`http://localhost:5001/events/${event.id}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.message || 'Failed to load event');
+                if (!cancelled) setLocalEvent(data);
+            } catch (err) {
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [event?.id]);
+
+
+    // Helper to format as "First L."
+    const abbrevName = (full) => {
+        if (!full || typeof full !== 'string') return '';
+        const parts = full.trim().split(/\s+/);
+        if (parts.length === 1) return parts[0]; // single name
+        const first = parts[0];
+        const last = parts[parts.length - 1];
+        return `${first} ${last.charAt(0).toUpperCase()}.`;
     };
 
-    try {
-        //Set up post
-        const res = await fetch('http://localhost:5001/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventFormData),
-        });
-        const data = await res.json();
-        //Try to post
-        if (!res.ok) throw new Error(data?.message || 'Request failed');
+    // Resolve participants' full names -> "John S."
+    useEffect(() => {
+        const participants = localEvent.participants || [];
+        if (!participants.length) {
+            setDisplayNames([]);
+            return;
+        }
 
-        setPage('eventList');
-    } catch (err) {
-        console.error(err);
-        setNotification({ message: `Create failed: ${err.message}`, type: 'error' });
+        let cancelled = false;
+        (async () => {
+            try {
+                // fetch full_name by email
+                const profiles = await Promise.all(
+                    participants.map(async (email) => {
+                        const res = await fetch(`http://localhost:5001/profile/${encodeURIComponent(email)}`);
+                        if (!res.ok) return { email, full_name: '' };
+                        const p = await res.json();
+                        return { email, full_name: p.full_name || '' };
+                    })
+                );
+                if (!cancelled) {
+                    const names = profiles
+                        .map(p => p.full_name ? abbrevName(p.full_name) : p.email)
+                        .filter(Boolean);
+                    setDisplayNames(names);
+                }
+            } catch {
+                // If profiles fail, just show emails, maybe delete later if it's too much idk
+                if (!cancelled) setDisplayNames(participants);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [localEvent.participants]);
+
+    if (!localEvent?.id) {
+        return (
+            <div className="content-card">
+                <h2>Event not found</h2>
+                <p>We couldn’t load this event.</p>
+                <div className="form-actions">
+                    <button type="button" className="button-add" onClick={onBack}>Back to Events</button>
+                </div>
+            </div>
+        );
     }
+
+    const isAdmin = loggedInUser?.role === 'admin';
+    const eventDateStr = localEvent.date || localEvent.event_date;
+    const eventDate = eventDateStr ? new Date(eventDateStr) : null;
+    const isPast = eventDate ? eventDate < new Date() : false;
+
+    const handleJoin = async () => {
+        if (isPast) return;
+        try {
+            const res = await fetch(`http://localhost:5001/events/${localEvent.id}/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: loggedInUser.email })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.message || 'Join failed');
+
+            // Server returns the updated event + participants
+            const updated = data.event || {};
+            setLocalEvent(prev => ({ ...prev, participants: updated.participants || [] }));
+
+            setNotification?.({ message: 'You have joined this event!', type: 'success' });
+        } catch (err) {
+            setNotification?.({ message: err.message || 'Failed to join event', type: 'error' });
+        }
+    };
+
+    return (
+        <div className="content-card">
+            <h2 style={{ color: '#BD0000' }}>{localEvent.name}</h2>
+            <p><strong>Date:</strong> {fmt(localEvent.event_date)}</p>
+            <p><strong>Urgency:</strong> {localEvent.urgency}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}><strong>Description:</strong> {localEvent.description}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}><strong>Location:</strong> {localEvent.location}</p>
+            <p>
+                <strong>Required Skills:</strong>{' '}
+                {localEvent.requiredSkills?.length ? localEvent.requiredSkills.join(', ') : 'None'}
+            </p>
+
+            <p style={{ marginTop: '0.75rem' }}>
+                <strong>Volunteers:</strong>{' '}
+                {displayNames.length ? displayNames.join(', ') : 'None yet'}
+            </p>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {/* Non-admin view */}
+                {!isAdmin && (
+                    <button
+                        className="button-submit"
+                        type="button"
+                        disabled={isPast}
+                        title={isPast ? 'Volunteering opportunity closed' : 'Volunteer for this event'}
+                        style={{
+                            opacity: isPast ? 0.5 : 1,
+                            cursor: isPast ? 'not-allowed' : 'pointer',
+                            backgroundColor: isPast ? '#9ca3af' : '#b91c1c' // grey if closed
+                        }}
+                        onClick={() => {
+                            if (isPast) return;
+                            handleJoin();
+                        }}
+                    >
+                        {isPast ? 'Volunteering opportunity closed' : 'Volunteer for this Event'}
+                    </button>
+                )}
+
+                {/* Admin view */}
+                {isAdmin && (
+                    <button
+                        className="button-add"
+                        type="button"
+                        onClick={() => {
+                            // placeholder, figure out later
+                            alert('End Event placeholder clicked');
+                        }}
+                    >
+                        End Event
+                    </button>
+                )}
+            </div>
+
+            <div className="form-actions" style={{ marginTop: '1rem' }}>
+                <button type="button" className="button-add" onClick={onBack}>Back to Events</button>
+            </div>
+        </div>
+    );
+}
+
+
+
+const EventManagementPage = ({ setPage, setNotification }) => {
+    const [requiredSkills, setRequiredSkills] = useState([]);
+
+    const handleEventCreation = async (e) => {
+        e.preventDefault();
+
+        // Build payload in the shape Flask expects
+        const formData = new FormData(e.target);
+        //Get form data and match it to flask names
+        const eventFormData = {
+            event_name: formData.get('name'),
+            description: formData.get('description'),
+            location: formData.get('location'),
+            required_skills: requiredSkills,
+            urgency: formData.get('urgency'),
+            event_date: formData.get('date'),
+        };
+
+        try {
+            //Set up post
+            const res = await fetch('http://localhost:5001/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(eventFormData),
+            });
+            const data = await res.json();
+            //Try to post
+            if (!res.ok) throw new Error(data?.message || 'Request failed');
+
+            setPage('eventList');
+        } catch (err) {
+            console.error(err);
+            setNotification({ message: `Create failed: ${err.message}`, type: 'error' });
+        }
     };
 
 
@@ -709,16 +882,16 @@ const EventManagementPage = ({ setPage, setNotification }) => {
             <h2>Create a New Event</h2>
             <p>Fill out the details below to post a new event for volunteers.</p>
 
-            <form onSubmit={handleEventCreation} style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
+            <form onSubmit={handleEventCreation} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div>
                     <label className="form-label">Event Name</label>
                     <input name="name" type="text" maxLength="100" required className="form-input-full" />
                 </div>
-                 <div>
+                <div>
                     <label className="form-label">Event Description</label>
                     <textarea name="description" rows="5" required className="form-textarea"></textarea>
                 </div>
-                 <div>
+                <div>
                     <label className="form-label">Location</label>
                     <textarea name="location" rows="3" required className="form-textarea"></textarea>
                 </div>
@@ -727,16 +900,16 @@ const EventManagementPage = ({ setPage, setNotification }) => {
                         <label className="form-label">Required Skills</label>
                         <CustomMultiSelect options={SKILLS_LIST} selected={requiredSkills} onChange={setRequiredSkills} placeholder="Select required skills" />
                     </div>
-                     <div>
+                    <div>
                         <label className="form-label">Urgency</label>
-                         <select name="urgency" required className="form-select">
+                        <select name="urgency" required className="form-select">
                             <option value="">Select Urgency</option>
                             {URGENCY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                     </div>
-                     <div>
+                    <div>
                         <label className="form-label">Event Date</label>
-                        <input name="date" type="date" required className="form-input-full"/>
+                        <input name="date" type="date" required className="form-input-full" />
                     </div>
                 </div>
                 <div className="form-actions">
@@ -748,9 +921,9 @@ const EventManagementPage = ({ setPage, setNotification }) => {
 }
 
 const HomePage = () => (
-    <div style={{textAlign: 'center', marginTop: '5rem'}}>
-        <h1 style={{fontSize: '3rem', fontWeight: 'bold', color: '#1f2937'}}>Event Management Hub</h1>
-        <p style={{fontSize: '1.25rem', color: '#6b7280', marginTop: '1rem' }}>Connecting volunteers with opportunities.</p>
+    <div style={{ textAlign: 'center', marginTop: '5rem' }}>
+        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937' }}>Event Management Hub</h1>
+        <p style={{ fontSize: '1.25rem', color: '#6b7280', marginTop: '1rem' }}>Connecting volunteers with opportunities.</p>
     </div>
 );
 
@@ -760,7 +933,8 @@ export default function App() {
     const [loggedInUser, setLoggedInUser] = useState(null);
     const [notification, setNotification] = useState(null);
     const [events, setEvents] = useState([]);
-    
+    const [focusedEvent, setFocusedEvent] = useState(null);
+
     const handleLogout = () => {
         setLoggedInUser(null);
         setPage('home');
@@ -773,22 +947,24 @@ export default function App() {
             case 'register':
                 return <RegisterPage setPage={setPage} setLoggedInUser={setLoggedInUser} setNotification={setNotification} />;
             case 'profile':
-                 if (!loggedInUser) {
+                if (!loggedInUser) {
                     setPage('login');
                     return null;
                 }
                 return <ProfilePage setPage={setPage} loggedInUser={loggedInUser} setLoggedInUser={setLoggedInUser} setNotification={setNotification} />;
             case 'eventManagement':
-                 if (!loggedInUser || loggedInUser.role !== 'admin') {
-                     console.warn("Attempted to access admin page without being logged in as admin.");
-                 }
+                if (!loggedInUser || loggedInUser.role !== 'admin') {
+                    console.warn("Attempted to access admin page without being logged in as admin.");
+                }
                 return <EventManagementPage setPage={setPage} setNotification={setNotification} setEvents={setEvents} />;
-                case 'eventList':
-                    if (!loggedInUser) {
-                        setPage('login');
-                        return null;
-                    }
-                return <EventList />;
+            case 'eventList':
+                if (!loggedInUser) { setPage('login'); return null; }
+                return <EventList onSelect={(ev) => { setFocusedEvent(ev); setPage('eventDetail'); }} />;
+            case 'eventDetail':
+                if (!loggedInUser) { setPage('login'); return null; }
+                return (
+                    <EventDetail event={focusedEvent} onBack={() => setPage('eventList')} loggedInUser={loggedInUser} setNotification={setNotification} />
+                )
             case 'home':
             default:
                 return <HomePage />;
@@ -807,12 +983,12 @@ export default function App() {
                     </div>
                     <div className="nav-links">
                         <button onClick={() => setPage('home')} className="nav-button">Home</button>
-                        
+
                         {loggedInUser ? (
                             <>
                                 <button onClick={() => setPage('eventList')} className="nav-button">EventList</button>
                                 {loggedInUser.role === 'admin' ? (
-                                     <button onClick={() => setPage('eventManagement')} className="nav-button">Event Management</button>
+                                    <button onClick={() => setPage('eventManagement')} className="nav-button">Event Management</button>
                                 ) : (
                                     <button onClick={() => setPage('profile')} className="nav-button">Profile</button>
                                 )}
