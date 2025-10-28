@@ -5,7 +5,9 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [upcomingEvents, setUpcomingEvents] = useState([]);
-    const [pastEvents, setPastEvents] = useState([]);
+    const [completedEvents, setCompletedEvents] = useState([]);
+    const [expiredEvents, setExpiredEvents] = useState([]);
+    const [pendingInvites, setPendingInvites] = useState([]);
 
     useEffect(() => {
         if (!loggedInUser?.email) {
@@ -14,26 +16,114 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
         }
 
         fetchUserEvents();
+        fetchPendingInvites();
+
+        // Polling for invites every 5 seconds
+        const interval = setInterval(fetchPendingInvites, 5000);
+        return () => clearInterval(interval);
     }, [loggedInUser?.email, navigate]);
+
+    const fetchPendingInvites = async () => {
+        try {
+            const userEmail = loggedInUser.email || localStorage.getItem('userEmail');
+            if (!userEmail) return;
+
+            const res = await fetch(`http://localhost:5001/invites/user/${encodeURIComponent(userEmail)}?status=pending&type=admin_invite`);
+
+            if (!res.ok) {
+                throw new Error('Failed to fetch invites');
+            }
+
+            const data = await res.json();
+            setPendingInvites(data);
+        } catch (error) {
+            console.error('Error fetching invites:', error);
+        }
+    };
 
     const fetchUserEvents = async () => {
         try {
-            const res = await fetch(`http://localhost:5001/user/${encodeURIComponent(loggedInUser.email)}/events`);
-            if (!res.ok) throw new Error('Failed to fetch events');
+            // Use email from localStorage if loggedInUser.email is not available
+            const userEmail = loggedInUser.email || localStorage.getItem('userEmail');
+
+            if (!userEmail) {
+                throw new Error('User email not found. Please log in again.');
+            }
+
+            console.log('Fetching events for user:', userEmail);
+
+            const res = await fetch(`http://localhost:5001/user/${encodeURIComponent(userEmail)}/events`);
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Failed to fetch events: ${res.status} ${errorText}`);
+            }
 
             const data = await res.json();
 
-            // Separate upcoming and past events
+            // Separate events into upcoming, completed, and expired
             const now = new Date();
-            const upcoming = data.events.filter(event => new Date(event.event_date) >= now);
-            const past = data.events.filter(event => new Date(event.event_date) < now);
+            const upcoming = data.events.filter(event =>
+                new Date(event.event_date) >= now && !event.completed
+            );
+            const completed = data.events.filter(event => event.completed);
+            const expired = data.events.filter(event =>
+                new Date(event.event_date) < now && !event.completed
+            );
 
             setUpcomingEvents(upcoming);
-            setPastEvents(past);
+            setCompletedEvents(completed);
+            setExpiredEvents(expired);
         } catch (error) {
+            console.error('Error fetching user events:', error);
             addNotification(error.message || 'Failed to load events', 'error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAcceptInvite = async (inviteId) => {
+        try {
+            const response = await fetch(`http://localhost:5001/invites/${inviteId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'accepted' }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to accept invite');
+            }
+
+            // Optimistic update
+            setPendingInvites(prev => prev.filter(invite => invite.id !== inviteId));
+            addNotification('Invite accepted successfully!', 'success');
+
+            // Refresh events to include the newly accepted event
+            fetchUserEvents();
+        } catch (error) {
+            console.error('Error accepting invite:', error);
+            addNotification('Failed to accept invite', 'error');
+        }
+    };
+
+    const handleDeclineInvite = async (inviteId) => {
+        try {
+            const response = await fetch(`http://localhost:5001/invites/${inviteId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'declined' }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to decline invite');
+            }
+
+            // Optimistic update
+            setPendingInvites(prev => prev.filter(invite => invite.id !== inviteId));
+            addNotification('Invite declined', 'info');
+        } catch (error) {
+            console.error('Error declining invite:', error);
+            addNotification('Failed to decline invite', 'error');
         }
     };
 
@@ -65,6 +155,80 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
         <div className="content-card">
             <h2>My Event Notifications</h2>
             <p>View your upcoming events and reminders</p>
+
+            {/* Pending Invites Section */}
+            {pendingInvites.length > 0 && (
+                <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
+                    <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600', color: '#dc2626' }}>
+                        Pending Invites ({pendingInvites.length})
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {pendingInvites.map((invite) => (
+                            <div
+                                key={invite.id}
+                                style={{
+                                    padding: '1.5rem',
+                                    border: '2px solid #dc2626',
+                                    borderRadius: '0.5rem',
+                                    backgroundColor: '#fef2f2',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                }}
+                            >
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                        {invite.event?.event_name || 'Event Invite'}
+                                    </h4>
+                                    {invite.event && (
+                                        <>
+                                            <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>
+                                                {invite.event.description}
+                                            </p>
+                                            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#4b5563' }}>
+                                                <div>
+                                                    <strong>Date:</strong> {new Date(invite.event.event_date).toLocaleDateString()}
+                                                </div>
+                                                <div>
+                                                    <strong>Location:</strong> {invite.event.location}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button
+                                        onClick={() => handleAcceptInvite(invite.id)}
+                                        style={{
+                                            padding: '0.5rem 1rem',
+                                            backgroundColor: '#16a34a',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.375rem',
+                                            cursor: 'pointer',
+                                            fontWeight: '600'
+                                        }}
+                                    >
+                                        Accept
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeclineInvite(invite.id)}
+                                        style={{
+                                            padding: '0.5rem 1rem',
+                                            backgroundColor: '#dc2626',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.375rem',
+                                            cursor: 'pointer',
+                                            fontWeight: '600'
+                                        }}
+                                    >
+                                        Decline
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Upcoming Events Section */}
             <div style={{ marginTop: '2rem' }}>
@@ -157,22 +321,74 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
                 )}
             </div>
 
-            {/* Past Events Section */}
-            {pastEvents.length > 0 && (
+            {/* Completed Events Section */}
+            {completedEvents.length > 0 && (
                 <div style={{ marginTop: '3rem' }}>
-                    <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
-                        Past Events ({pastEvents.length})
+                    <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600', color: '#16a34a' }}>
+                        Completed Events ({completedEvents.length})
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {pastEvents.map((event, index) => (
+                        {completedEvents.map((event, index) => (
                             <div
                                 key={index}
                                 style={{
                                     padding: '1.5rem',
-                                    border: '1px solid #e5e7eb',
+                                    border: '2px solid #16a34a',
                                     borderRadius: '0.5rem',
-                                    backgroundColor: '#f9fafb',
-                                    opacity: 0.8
+                                    backgroundColor: '#f0fdf4',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div>
+                                        <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            {event.event_name}
+                                        </h4>
+                                        <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>
+                                            {event.description}
+                                        </p>
+                                        <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#4b5563' }}>
+                                            <div>
+                                                <strong>Date:</strong> {new Date(event.event_date).toLocaleDateString()}
+                                            </div>
+                                            <div>
+                                                <strong>Location:</strong> {event.location}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span style={{
+                                        padding: '0.25rem 0.75rem',
+                                        backgroundColor: '#16a34a',
+                                        color: 'white',
+                                        borderRadius: '9999px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        COMPLETED ✓
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Expired Events Section */}
+            {expiredEvents.length > 0 && (
+                <div style={{ marginTop: '3rem' }}>
+                    <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600', color: '#dc2626' }}>
+                        Expired Events ({expiredEvents.length})
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {expiredEvents.map((event, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    padding: '1.5rem',
+                                    border: '2px solid #dc2626',
+                                    borderRadius: '0.5rem',
+                                    backgroundColor: '#fef2f2',
+                                    opacity: 0.9
                                 }}
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
@@ -195,7 +411,7 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
                                     <div
                                         style={{
                                             padding: '0.5rem 1rem',
-                                            backgroundColor: '#6b7280',
+                                            backgroundColor: '#dc2626',
                                             color: 'white',
                                             borderRadius: '0.375rem',
                                             fontWeight: '600',
@@ -204,7 +420,7 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
                                             marginLeft: '1rem'
                                         }}
                                     >
-                                        COMPLETED
+                                        EXPIRED
                                     </div>
                                 </div>
                             </div>

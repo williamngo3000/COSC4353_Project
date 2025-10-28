@@ -1,16 +1,20 @@
-import { Box, Typography, useTheme, IconButton } from "@mui/material";
-import { DataGrid } from "@mui/x-data-grid";
+import { Box, Typography, useTheme, IconButton, Collapse, Checkbox, TextField, Button } from "@mui/material";
 import { tokens } from "../../../theme";
-// import { fakeData } from "../../../data/eventFake";
 import Header from "../../../components/Header";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useState, useEffect } from "react";
 
 const Events = () => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
-  // const [rows, setRows] = useState(fakeData);
   const [rows, setRows] = useState([]);
+  const [expandedEvent, setExpandedEvent] = useState(null);
+  const [eventVolunteers, setEventVolunteers] = useState({});
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   // Fetch events from backend API
   const fetchEvents = () => {
@@ -25,6 +29,9 @@ const Events = () => {
           requiredSkills: ev.required_skills,
           urgency: ev.urgency,
           date: ev.event_date,
+          volunteerLimit: ev.volunteer_limit,
+          currentVolunteers: ev.current_volunteers,
+          status: ev.status,
         }));
         setRows(formatted);
       })
@@ -40,6 +47,94 @@ const Events = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  const handleToggleExpand = async (eventId) => {
+    if (expandedEvent === eventId) {
+      setExpandedEvent(null);
+    } else {
+      setExpandedEvent(eventId);
+      // Fetch volunteers for this event if not already loaded
+      if (!eventVolunteers[eventId]) {
+        await fetchEventVolunteers(eventId);
+      }
+    }
+  };
+
+  const fetchEventVolunteers = async (eventId) => {
+    try {
+      // Fetch all accepted invites for this event
+      const response = await fetch(`http://localhost:5001/invites?status=accepted`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch volunteers');
+      }
+
+      const invites = await response.json();
+      const eventInvites = invites.filter(inv => inv.event_id === eventId);
+
+      // Fetch user details for each volunteer
+      const volunteersWithDetails = await Promise.all(
+        eventInvites.map(async (invite) => {
+          try {
+            const userRes = await fetch(`http://localhost:5001/profile/${encodeURIComponent(invite.user_email)}`);
+            if (userRes.ok) {
+              const profile = await userRes.json();
+              return {
+                email: invite.user_email,
+                name: profile.full_name || invite.user_email,
+                inviteId: invite.id,
+                completed: invite.completed || false
+              };
+            }
+          } catch (err) {
+            console.error('Error fetching user profile:', err);
+          }
+          return {
+            email: invite.user_email,
+            name: invite.user_email,
+            inviteId: invite.id,
+            completed: invite.completed || false
+          };
+        })
+      );
+
+      setEventVolunteers(prev => ({
+        ...prev,
+        [eventId]: volunteersWithDetails
+      }));
+    } catch (error) {
+      console.error('Error fetching event volunteers:', error);
+      alert('Failed to load volunteers for this event');
+    }
+  };
+
+  const handleToggleCompletion = async (eventId, inviteId, currentStatus) => {
+    try {
+      const response = await fetch(`http://localhost:5001/invites/${inviteId}/complete`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: !currentStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update completion status');
+      }
+
+      // Update local state
+      setEventVolunteers(prev => ({
+        ...prev,
+        [eventId]: prev[eventId].map(vol =>
+          vol.inviteId === inviteId
+            ? { ...vol, completed: !currentStatus }
+            : vol
+        )
+      }));
+
+      console.log('Completion status updated successfully');
+    } catch (error) {
+      console.error('Error updating completion status:', error);
+      alert('Failed to update completion status. Please try again.');
+    }
+  };
 
   const handleDelete = async (id) => {
     // Optimistic update - remove from UI immediately
@@ -65,23 +160,37 @@ const Events = () => {
     }
   };
 
-  const handleCellEdit = async (updatedRow) => {
-    // Optimistic update - update UI immediately
-    const originalRow = rows.find(row => row.id === updatedRow.id);
-    setRows(rows.map((row) => (row.id === updatedRow.id ? updatedRow : row)));
+  const handleStartEdit = (event) => {
+    setEditingEvent(event.id);
+    setEditForm({
+      name: event.name,
+      description: event.description,
+      location: event.location,
+      requiredSkills: Array.isArray(event.requiredSkills) ? event.requiredSkills.join(', ') : '',
+      urgency: event.urgency,
+      date: event.date,
+      volunteerLimit: event.volunteerLimit || '',
+    });
+  };
 
-    // Update in backend
+  const handleCancelEdit = () => {
+    setEditingEvent(null);
+    setEditForm({});
+  };
+
+  const handleSaveEdit = async (eventId) => {
     try {
-      const response = await fetch(`http://localhost:5001/events/${updatedRow.id}`, {
+      const response = await fetch(`http://localhost:5001/events/${eventId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_name: updatedRow.name,
-          description: updatedRow.description,
-          location: updatedRow.location,
-          required_skills: updatedRow.requiredSkills,
-          urgency: updatedRow.urgency,
-          event_date: updatedRow.date,
+          event_name: editForm.name,
+          description: editForm.description,
+          location: editForm.location,
+          required_skills: editForm.requiredSkills.split(',').map(s => s.trim()).filter(s => s),
+          urgency: editForm.urgency,
+          event_date: editForm.date,
+          volunteer_limit: editForm.volunteerLimit ? parseInt(editForm.volunteerLimit) : null,
         }),
       });
 
@@ -89,140 +198,355 @@ const Events = () => {
         throw new Error('Failed to update event');
       }
 
+      // Update local state
+      setRows(rows.map(row =>
+        row.id === eventId
+          ? {
+              ...row,
+              name: editForm.name,
+              description: editForm.description,
+              location: editForm.location,
+              requiredSkills: editForm.requiredSkills.split(',').map(s => s.trim()).filter(s => s),
+              urgency: editForm.urgency,
+              date: editForm.date,
+              volunteerLimit: editForm.volunteerLimit ? parseInt(editForm.volunteerLimit) : null,
+            }
+          : row
+      ));
+
+      setEditingEvent(null);
+      setEditForm({});
       console.log('Event updated successfully');
     } catch (error) {
       console.error('Error updating event:', error);
-      // Revert if update fails
-      setRows(rows.map((row) => (row.id === updatedRow.id ? originalRow : row)));
       alert('Failed to update event. Please try again.');
     }
-
-    return updatedRow;
   };
-  const columns = [
-    {
-        field: "id",
-        headerName: "ID",
-        editable: false,
-    },
-    {
-        field: "name",
-        headerName: "Name",
-        width: 200,
-        cellClassName: "name-column--cell",
-        editable: true,
-    },
-    {
-        field: "description",
-        headerName: "Description",
-        headerAlign: "left",
-        flex: .5,
-        align: "left",
-        editable: true,
-    },
-    {
-        field: "location",
-        headerName: "Location",
-        headerAlign: "left",
-        align: "left",
-        editable: true,
-    },
-    {
-        field: "requiredSkills",
-        headerName: "Requested Skills",
-        headerAlign: "left",
-        editable: true,
-    },
-    {
-        field: "urgency",
-        headerName: "Urgency",
-        headerAlign: "left",
-        type: "number",
-        editable: true,
-    },
-    {
-        field: "date",
-        headerName: "Date Created",
-        headerAlign: "left",
-        editable: true,
-    },
-    {
-        field: "actions",
-        headerName: "Actions",
-        width: 100,
-        sortable: false,
-        filterable: false,
-        renderCell: (params) => (
-          <IconButton
-            onClick={() => handleDelete(params.row.id)}
-            sx={{ color: colors.red[500] }}
-          >
-            <DeleteIcon />
-          </IconButton>
-        ),
-    }
-  ];
+
+  const handleFormChange = (field, value) => {
+    setEditForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
   return (
     <Box m="20px" fontFamily={"sans-serif"}>
-      <Header title="Events" subtitle="" />
-      <Box
-        m="40px 0 0 0"
-        height="75vh"
-        sx={{
-          "& .MuiDataGrid-root": {
-            border: "none",
-            fontFamily: "sans-serif"
-          },
-          "& .MuiDataGrid-cell": {
-            borderBottom: "none",
-          },
-          "& .MuiDataGrid-cell:focus": {
-            outline: "none !important",
-          },
-          "& .MuiDataGrid-cell:focus-within": {
-            outline: "none !important",
-          },
-          "& .MuiDataGrid-row:focus": {
-            outline: "none !important",
-          },
-          "& .MuiDataGrid-row:focus-within": {
-            outline: "none !important",
-          },
-          "& .MuiDataGrid-columnHeader:focus": {
-            outline: "none !important",
-          },
-          "& .MuiDataGrid-columnHeader:focus-within": {
-            outline: "none !important",
-          },
-          "& .name-column--cell": {
-            color: colors.green[300],
-          },
-          "& .MuiDataGrid-columnHeaders": {
-            backgroundColor: colors.indigo[700],
-            borderBottom: "none",
-          },
-          "& .MuiDataGrid-virtualScroller": {
-            backgroundColor: colors.primary[400],
-          },
-          "& .MuiDataGrid-footerContainer": {
-            backgroundColor: colors.primary[400],
-            borderTop: "none"
-          },
-          "& .MuiCheckbox-root": {
-            color: `${colors.green[200]} !important`,
-          },
-        }}
-      >
-        <DataGrid
-            checkboxSelection
-            rows={rows}
-            columns={columns}
-            autoPageSize
-            processRowUpdate={handleCellEdit}
-            onProcessRowUpdateError={(error) => console.error(error)}
-            sx={{'& .MuiDataGrid-columnHeader--name' : { width: 'auto' } }}
-        />
+      <Header title="Events" subtitle="List of all volunteer events - Click to expand" />
+      <Box m="40px 0 0 0">
+        {rows.length === 0 ? (
+          <Typography sx={{ textAlign: 'center', color: colors.grey[300], mt: 4 }}>
+            No events created yet
+          </Typography>
+        ) : (
+          rows.map((event) => (
+            <Box
+              key={event.id}
+              mb="10px"
+              sx={{
+                backgroundColor: colors.primary[400],
+                borderRadius: '8px',
+                overflow: 'hidden',
+                border: `1px solid ${colors.primary[300]}`
+              }}
+            >
+              {/* Event Header - Clickable Part or Edit Mode */}
+              {editingEvent === event.id ? (
+                // Edit Mode
+                <Box p="20px" sx={{ backgroundColor: colors.primary[400] }}>
+                  <Typography variant="h5" fontWeight="600" color={colors.grey[100]} mb="15px">
+                    Edit Event
+                  </Typography>
+                  <Box display="flex" flexDirection="column" gap="15px">
+                    <TextField
+                      label="Event Name"
+                      value={editForm.name}
+                      onChange={(e) => handleFormChange('name', e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Description"
+                      value={editForm.description}
+                      onChange={(e) => handleFormChange('description', e.target.value)}
+                      fullWidth
+                      multiline
+                      rows={2}
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Location"
+                      value={editForm.location}
+                      onChange={(e) => handleFormChange('location', e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Required Skills (comma-separated)"
+                      value={editForm.requiredSkills}
+                      onChange={(e) => handleFormChange('requiredSkills', e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Urgency"
+                      value={editForm.urgency}
+                      onChange={(e) => handleFormChange('urgency', e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Event Date"
+                      type="date"
+                      value={editForm.date}
+                      onChange={(e) => handleFormChange('date', e.target.value)}
+                      fullWidth
+                      slotProps={{
+                        inputLabel: { shrink: true }
+                      }}
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <TextField
+                      label="Volunteer Limit (leave empty for unlimited)"
+                      type="number"
+                      value={editForm.volunteerLimit}
+                      onChange={(e) => handleFormChange('volunteerLimit', e.target.value)}
+                      fullWidth
+                      slotProps={{ htmlInput: { min: 1 } }}
+                      sx={{
+                        '& .MuiInputLabel-root': { color: colors.grey[100] },
+                        '& .MuiOutlinedInput-root': {
+                          color: colors.grey[100],
+                          '& fieldset': { borderColor: colors.grey[100] },
+                          '&:hover fieldset': { borderColor: colors.grey[100] },
+                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                        }
+                      }}
+                    />
+                    <Box display="flex" gap="10px" mt="10px">
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveEdit(event.id)}
+                        sx={{
+                          backgroundColor: colors.green[500],
+                          '&:hover': { backgroundColor: colors.green[700] }
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={handleCancelEdit}
+                        sx={{
+                          borderColor: colors.grey[100],
+                          color: colors.grey[100],
+                          '&:hover': {
+                            borderColor: colors.grey[300],
+                            backgroundColor: colors.primary[300]
+                          }
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
+                  </Box>
+                </Box>
+              ) : (
+                // View Mode
+                <Box
+                  onClick={() => handleToggleExpand(event.id)}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    p: '20px',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: colors.grey[700]
+                    }
+                  }}
+                >
+                  <Box flex="1">
+                    <Box display="flex" alignItems="center" gap="10px">
+                      <Typography variant="h4" fontWeight="600" color={colors.green[500]}>
+                        {event.name}
+                      </Typography>
+                      {event.status === 'closed' && (
+                        <Typography
+                          sx={{
+                            px: '10px',
+                            py: '3px',
+                            backgroundColor: colors.red[500],
+                            color: 'white',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          CLOSED
+                        </Typography>
+                      )}
+                    </Box>
+                    <Typography variant="body2" color={colors.grey[300]} mt="5px">
+                      {event.description}
+                    </Typography>
+                    <Box display="flex" gap="20px" mt="10px" fontSize="14px">
+                      <Typography color={colors.grey[100]}>
+                        <strong>Date:</strong> {event.date}
+                      </Typography>
+                      <Typography color={colors.grey[100]}>
+                        <strong>Location:</strong> {event.location}
+                      </Typography>
+                      <Typography color={colors.grey[100]}>
+                        <strong>Urgency:</strong> {event.urgency}
+                      </Typography>
+                      <Typography color={event.status === 'closed' ? colors.red[400] : colors.grey[100]}>
+                        <strong>Volunteers:</strong> {event.currentVolunteers || 0}
+                        {event.volunteerLimit ? `/${event.volunteerLimit}` : ' (unlimited)'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" alignItems="center" gap="10px">
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartEdit(event);
+                      }}
+                      sx={{ color: colors.indigo[500] }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(event.id);
+                      }}
+                      sx={{ color: colors.red[500] }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                    <IconButton>
+                      {expandedEvent === event.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    </IconButton>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Expandable Section - Volunteers List */}
+              <Collapse in={expandedEvent === event.id}>
+                <Box
+                  p="20px"
+                  sx={{
+                    backgroundColor: colors.grey[700],
+                    borderTop: `1px solid ${colors.primary[300]}`
+                  }}
+                >
+                  <Typography variant="h5" fontWeight="600" color={colors.grey[100]} mb="15px">
+                    Assigned Volunteers
+                  </Typography>
+
+                  {!eventVolunteers[event.id] ? (
+                    <Typography color={colors.grey[300]}>Loading volunteers...</Typography>
+                  ) : eventVolunteers[event.id].length === 0 ? (
+                    <Typography color={colors.grey[300]}>No volunteers assigned to this event yet</Typography>
+                  ) : (
+                    <Box>
+                      {eventVolunteers[event.id].map((volunteer) => (
+                        <Box
+                          key={volunteer.inviteId}
+                          display="flex"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          p="15px"
+                          mb="10px"
+                          sx={{
+                            backgroundColor: colors.primary[400],
+                            borderRadius: '5px',
+                            border: `1px solid ${colors.primary[300]}`
+                          }}
+                        >
+                          <Box>
+                            <Typography color={colors.grey[100]} fontWeight="600">
+                              {volunteer.name}
+                            </Typography>
+                            <Typography variant="body2" color={colors.grey[300]}>
+                              {volunteer.email}
+                            </Typography>
+                          </Box>
+
+                          <Box display="flex" alignItems="center" gap="10px">
+                            <Typography color={colors.grey[100]}>
+                              {volunteer.completed ? 'Completed' : 'Mark as completed:'}
+                            </Typography>
+                            <Checkbox
+                              checked={volunteer.completed}
+                              onChange={() => handleToggleCompletion(event.id, volunteer.inviteId, volunteer.completed)}
+                              sx={{
+                                color: colors.green[500],
+                                '&.Mui-checked': {
+                                  color: colors.green[500]
+                                }
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              </Collapse>
+            </Box>
+          ))
+        )}
       </Box>
     </Box>
   );

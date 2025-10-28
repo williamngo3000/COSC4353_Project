@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme, IconButton, Select, MenuItem } from "@mui/material";
+import { Box, Typography, useTheme, IconButton, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { tokens } from "../../../theme";
 // import { mockDataUsers } from "../../../data/mockDataUsers";
@@ -6,14 +6,19 @@ import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettin
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
 import DeleteIcon from "@mui/icons-material/Delete";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import Header from "../../../components/Header";
 import { useState, useEffect } from "react";
 
-const Users = () => {
+const Users = ({ addNotification }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const [rows, setRows] = useState([]);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
+  const [events, setEvents] = useState([]);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState("");
 
   // Get current logged-in user's email
   useEffect(() => {
@@ -34,9 +39,26 @@ const Users = () => {
       .catch(err => console.error('Failed to load users:', err));
   };
 
+  // Fetch events for invite dropdown
+  const fetchEvents = () => {
+    fetch('http://localhost:5001/events')
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        console.log('Fetched events for invite dialog:', data);
+        setEvents(data);
+      })
+      .catch(err => console.error('Failed to load events:', err));
+  };
+
   useEffect(() => {
     // Initial fetch
     fetchUsers();
+    fetchEvents();
 
     // Updates users every 3 sec
     const interval = setInterval(fetchUsers, 3000);
@@ -62,7 +84,7 @@ const Users = () => {
     } catch (error) {
       console.error('Error deleting user:', error);
       setRows(prevRows => [...prevRows, deletedRow]);
-      alert('Failed to delete user. Please try again.');
+      addNotification('Failed to delete user. Please try again.', 'error');
     }
   };
 
@@ -89,7 +111,7 @@ const Users = () => {
     } catch (error) {
       console.error('Error updating user:', error);
       setRows(rows.map((row) => (row.id === updatedRow.id ? originalRow : row)));
-      alert('Failed to update user. Please try again.');
+      addNotification('Failed to update user. Please try again.', 'error');
     }
 
     return updatedRow;
@@ -114,9 +136,45 @@ const Users = () => {
     } catch (error) {
       console.error('Error updating role:', error);
       setRows(originalRows);
-      alert('Failed to update role. Please try again.');
+      addNotification('Failed to update role. Please try again.', 'error');
     }
   };
+
+  const handleInviteClick = (user) => {
+    setSelectedUser(user);
+    setInviteDialogOpen(true);
+  };
+
+  const handleInviteSubmit = async () => {
+    if (!selectedEvent) {
+      addNotification('Please select an event', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5001/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: selectedEvent,
+          user_email: selectedUser.email,
+          type: 'admin_invite'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send invite');
+      }
+
+      addNotification(`Invite sent to ${selectedUser.name}`, 'success');
+      setInviteDialogOpen(false);
+      setSelectedEvent("");
+    } catch (error) {
+      console.error('Error sending invite:', error);
+      addNotification('Failed to send invite. Please try again.', 'error');
+    }
+  };
+
   const columns = [
     {
       field: "id",
@@ -134,13 +192,13 @@ const Users = () => {
       field: "phone",
       headerName: "Phone Number",
       flex: 1,
-      editable: false,
+      editable: true,
     },
     {
       field: "email",
       headerName: "Email",
       flex: 1,
-      editable: false,
+      editable: true,
     },
     {
       field: "role",
@@ -175,6 +233,22 @@ const Users = () => {
           </Select>
         );
       },
+    },
+    {
+      field: "invite",
+      headerName: "Invite",
+      width: 100,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <IconButton
+          onClick={() => handleInviteClick(params.row)}
+          sx={{ color: colors.green[500] }}
+          title="Invite to event"
+        >
+          <PersonAddIcon />
+        </IconButton>
+      ),
     },
     {
       field: "actions",
@@ -263,6 +337,104 @@ const Users = () => {
           onProcessRowUpdateError={(error) => console.error(error)}
         />
       </Box>
+
+      {/* Invite Dialog */}
+      <Dialog
+        open={inviteDialogOpen}
+        onClose={() => setInviteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: {
+              backgroundColor: colors.primary[400],
+              backgroundImage: 'none',
+              minWidth: '400px'
+            }
+          }
+        }}
+      >
+        <DialogTitle sx={{ backgroundColor: colors.primary[400], color: colors.grey[100] }}>
+          Invite {selectedUser?.name} to Event
+        </DialogTitle>
+        <DialogContent sx={{ backgroundColor: colors.primary[400], mt: 2, pb: 2 }}>
+          {events.length === 0 ? (
+            <Typography sx={{ color: colors.grey[100], textAlign: 'center', py: 2 }}>
+              No events available. Please create an event first.
+            </Typography>
+          ) : (
+            <Select
+              value={selectedEvent}
+              onChange={(e) => setSelectedEvent(e.target.value)}
+              fullWidth
+              displayEmpty
+              renderValue={(selected) => {
+                if (!selected) {
+                  return <span style={{ color: colors.grey[300] }}>Select an event</span>;
+                }
+                const selectedEvent = events.find(e => e.id === selected);
+                return selectedEvent ? `${selectedEvent.event_name} - ${selectedEvent.event_date}` : '';
+              }}
+              sx={{
+                color: colors.grey[100],
+                backgroundColor: colors.primary[400],
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: colors.grey[100],
+                  borderWidth: '2px'
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: colors.grey[100]
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: colors.indigo[500]
+                },
+                '& .MuiSelect-icon': {
+                  color: colors.grey[100]
+                }
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    backgroundColor: colors.primary[400],
+                    backgroundImage: 'none',
+                    '& .MuiMenuItem-root': {
+                      color: colors.grey[100],
+                      '&:hover': {
+                        backgroundColor: colors.grey[700]
+                      },
+                      '&.Mui-selected': {
+                        backgroundColor: colors.grey[900],
+                        '&:hover': {
+                          backgroundColor: colors.grey[700]
+                        }
+                      },
+                      '&.Mui-disabled': {
+                        color: colors.grey[100],
+                        opacity: 1
+                      }
+                    }
+                  }
+                }
+              }}
+            >
+              <MenuItem value="" disabled>Select an event</MenuItem>
+              {events.map((event) => (
+                <MenuItem key={event.id} value={event.id}>
+                  {event.event_name} - {event.event_date}
+                </MenuItem>
+              ))}
+            </Select>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ backgroundColor: colors.primary[400] }}>
+          <Button onClick={() => setInviteDialogOpen(false)} sx={{ color: colors.grey[100] }}>
+            Cancel
+          </Button>
+          <Button onClick={handleInviteSubmit} sx={{ color: colors.green[500], fontWeight: 'bold' }}>
+            Send Invite
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

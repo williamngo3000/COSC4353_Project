@@ -73,6 +73,14 @@ class EventCreation(BaseModel):
     required_skills: List[str]
     urgency: str
     event_date: str
+    volunteer_limit: Optional[int] = None  # None means unlimited
+
+    @field_validator('volunteer_limit')
+    @classmethod
+    def validate_volunteer_limit(cls, value):
+        if value is not None and value < 1:
+            raise ValueError('Volunteer limit must be at least 1')
+        return value
 
     @field_validator('event_name')
     @classmethod
@@ -122,18 +130,20 @@ DB = {
         1: {
             "event_name": "Community Food Drive", "description": "Annual food drive to support local families.",
             "location": "Downtown Community Center", "required_skills": ["Logistics", "Event Setup"],
-            "urgency": "High", "event_date": "2024-12-01"
+            "urgency": "High", "event_date": "2024-12-01", "volunteer_limit": 10, "status": "open"
         },
         2: {
             "event_name": "Park Cleanup Day", "description": "Help us clean and beautify Memorial Park.",
             "location": "Memorial Park", "required_skills": ["Event Setup"],
-            "urgency": "Medium", "event_date": "2024-11-20"
+            "urgency": "Medium", "event_date": "2024-11-20", "volunteer_limit": None, "status": "open"
         }
     },
     "skills": ["First Aid", "Logistics", "Event Setup", "Public Speaking", "Registration", "Tech Support", "Catering", "Marketing", "Fundraising", "Photography", "Social Media", "Team Leadership", "Translation"],
     "urgency_levels": ["Low", "Medium", "High", "Critical"],
     "notifications": [],
-    "activity_log": []
+    "activity_log": [],
+    "invites": [],
+    "invite_counter": 1
 }
 
 # --- Helper Functions ---
@@ -163,11 +173,45 @@ def add_activity(type, **kwargs):
         **kwargs
     }
     # Add to beginning
-    DB["activity_log"].insert(0, activity)  
+    DB["activity_log"].insert(0, activity)
     # Keep only last 50 activities
     if len(DB["activity_log"]) > 50:
         DB["activity_log"] = DB["activity_log"][:50]
     return activity
+
+def get_event_volunteer_count(event_id):
+    """Get the current number of accepted volunteers for an event"""
+    return len([inv for inv in DB["invites"]
+                if inv['event_id'] == event_id and inv['status'] == 'accepted'])
+
+def check_and_close_event(event_id):
+    """Check if event should be closed (full or date passed) and close it"""
+    event = DB["events"].get(event_id)
+    if not event or event.get("status") == "closed":
+        return False
+
+    # Check if event date has passed
+    event_date = datetime.strptime(event["event_date"], "%Y-%m-%d").date()
+    today = datetime.now().date()
+
+    if event_date < today:
+        event["status"] = "closed"
+        return True
+
+    # Check if volunteer limit reached
+    volunteer_limit = event.get("volunteer_limit")
+    if volunteer_limit is not None:
+        current_count = get_event_volunteer_count(event_id)
+        if current_count >= volunteer_limit:
+            event["status"] = "closed"
+            return True
+
+    return False
+
+def check_all_events_status():
+    """Check and auto-close all events that should be closed"""
+    for event_id in DB["events"]:
+        check_and_close_event(event_id)
 
 # --- API Endpoints ---
 
@@ -236,30 +280,45 @@ def user_profile(email):
 @app.route('/events', methods=['GET', 'POST'])
 def manage_events():
     if request.method == 'GET':
-        event_list = [{"id": id, **event} for id, event in DB["events"].items()]
+        # Check and update event statuses before returning
+        check_all_events_status()
+
+        # Add volunteer count to each event
+        event_list = []
+        for id, event in DB["events"].items():
+            event_data = {"id": id, **event}
+            event_data["current_volunteers"] = get_event_volunteer_count(id)
+            event_list.append(event_data)
+
         return jsonify(event_list), 200
 
     if request.method == 'POST':
         try:
             event_data = EventCreation(**request.json)
             new_id = max(DB["events"].keys()) + 1 if DB["events"] else 1
-            DB["events"][new_id] = event_data.model_dump()
+            event_dict = event_data.model_dump()
+            event_dict["status"] = "open"  # All new events start as open
+            DB["events"][new_id] = event_dict
 
             # Add notification and activity log
             add_notification(f"New event created: {event_data.event_name}", "success")
             add_activity("event_created", event=event_data.event_name)
 
-            return jsonify({"message": "Event created successfully", "event": {"id": new_id, **event_data.model_dump()}}), 201
+            return jsonify({"message": "Event created successfully", "event": {"id": new_id, **event_dict}}), 201
         except ValidationError as e:
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
         except Exception as e:
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-@app.route('/events/<int:event_id>', methods=['PUT', 'DELETE'])
+@app.route('/events/<int:event_id>', methods=['GET', 'PUT', 'DELETE'])
 def modify_event(event_id):
-    """Update or delete a specific event by ID"""
+    """Get, update, or delete a specific event by ID"""
     if event_id not in DB["events"]:
         return jsonify({"message": "Event not found"}), 404
+
+    if request.method == 'GET':
+        event = DB["events"][event_id]
+        return jsonify({"id": event_id, **event}), 200
 
     if request.method == 'PUT':
         try:
@@ -322,12 +381,14 @@ def get_user_events(email):
     if not user:
         return jsonify({"message": "User not found"}), 404
 
-    # Get user's event history
-    history_ids = user.get("history", [])
+    # Get events from accepted invites, not from history
+    # History is for completed events only
+    user_invites = [inv for inv in DB["invites"] if inv['user_email'] == email and inv['status'] == 'accepted']
 
     # Create list of events with full details
     events = []
-    for event_id in history_ids:
+    for invite in user_invites:
+        event_id = invite['event_id']
         if event_id in DB["events"]:
             event = DB["events"][event_id]
             events.append({
@@ -337,7 +398,8 @@ def get_user_events(email):
                 "location": event["location"],
                 "event_date": event["event_date"],
                 "required_skills": event.get("required_skills", []),
-                "urgency": event.get("urgency", "")
+                "urgency": event.get("urgency", ""),
+                "completed": invite.get("completed", False)
             })
 
     return jsonify({"events": events}), 200
@@ -406,6 +468,175 @@ def modify_user(email):
     if request.method == 'DELETE':
         del DB["users"][email]
         return jsonify({"message": "User deleted successfully"}), 200
+
+# --- Invite/Request Endpoints ---
+
+@app.route('/invites', methods=['GET', 'POST'])
+def manage_invites():
+    """Get all invites or create a new invite/request"""
+    if request.method == 'GET':
+        # Filter by status and type if provided
+        status = request.args.get('status')
+        invite_type = request.args.get('type')
+
+        filtered_invites = DB["invites"]
+        if status:
+            filtered_invites = [inv for inv in filtered_invites if inv['status'] == status]
+        if invite_type:
+            filtered_invites = [inv for inv in filtered_invites if inv['type'] == invite_type]
+
+        return jsonify(filtered_invites), 200
+
+    if request.method == 'POST':
+        try:
+            data = request.json
+            event_id = data['event_id']
+
+            # Check if event exists and is open
+            event = DB["events"].get(event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
+
+            # Check and update event status
+            check_and_close_event(event_id)
+
+            # Check if event is closed
+            if event.get("status") == "closed":
+                return jsonify({"message": "This event is now closed and no longer accepting volunteers"}), 403
+
+            # Check for existing pending or accepted invite/request for this user and event
+            existing_invite = next(
+                (inv for inv in DB["invites"]
+                 if inv['user_email'] == data['user_email']
+                 and inv['event_id'] == event_id
+                 and inv['status'] in ['pending', 'accepted']),
+                None
+            )
+
+            if existing_invite:
+                if existing_invite['status'] == 'pending':
+                    return jsonify({"message": "You already have a pending request for this event"}), 409
+                elif existing_invite['status'] == 'accepted':
+                    return jsonify({"message": "You are already signed up for this event"}), 409
+
+            invite_id = DB["invite_counter"]
+            DB["invite_counter"] += 1
+
+            invite = {
+                "id": invite_id,
+                "event_id": event_id,
+                "user_email": data['user_email'],
+                "status": "pending",
+                "type": data['type'],  # 'admin_invite' or 'user_request'
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            DB["invites"].append(invite)
+
+            # Add notification based on type
+            if data['type'] == 'admin_invite':
+                event = DB["events"].get(data['event_id'])
+                event_name = event['event_name'] if event else f"Event #{data['event_id']}"
+                add_notification(f"You've been invited to: {event_name}", "info")
+            elif data['type'] == 'user_request':
+                event = DB["events"].get(data['event_id'])
+                event_name = event['event_name'] if event else f"Event #{data['event_id']}"
+                add_notification(f"{data['user_email']} requested to join: {event_name}", "info")
+
+            return jsonify({"message": "Invite/request created successfully", "invite": invite}), 201
+        except Exception as e:
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+@app.route('/invites/<int:invite_id>', methods=['PUT', 'DELETE'])
+def modify_invite(invite_id):
+    """Update or delete an invite"""
+    invite = next((inv for inv in DB["invites"] if inv["id"] == invite_id), None)
+
+    if not invite:
+        return jsonify({"message": "Invite not found"}), 404
+
+    if request.method == 'PUT':
+        try:
+            data = request.json
+            old_status = invite['status']
+            new_status = data.get('status', invite['status'])
+            invite['status'] = new_status
+
+            # If invite is being accepted, check if event should be closed
+            if old_status != 'accepted' and new_status == 'accepted':
+                check_and_close_event(invite['event_id'])
+
+            # Note: History is now only for completed events, not accepted invites
+            # Events are added to history when marked as completed via the /complete endpoint
+
+            return jsonify({"message": "Invite updated successfully", "invite": invite}), 200
+        except Exception as e:
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+    if request.method == 'DELETE':
+        DB["invites"].remove(invite)
+        return jsonify({"message": "Invite deleted successfully"}), 200
+
+@app.route('/invites/<int:invite_id>/complete', methods=['PUT'])
+def mark_invite_complete(invite_id):
+    """Mark a volunteer's event participation as completed"""
+    invite = next((inv for inv in DB["invites"] if inv["id"] == invite_id), None)
+
+    if not invite:
+        return jsonify({"message": "Invite not found"}), 404
+
+    try:
+        data = request.json
+        completed = data.get('completed', False)
+
+        invite['completed'] = completed
+
+        # If marking as completed, add to user's history
+        if completed and invite['status'] == 'accepted':
+            user_email = invite['user_email']
+            event_id = invite['event_id']
+            if user_email in DB["users"]:
+                if event_id not in DB["users"][user_email]["history"]:
+                    DB["users"][user_email]["history"].append(event_id)
+        # If unmarking as completed, remove from history
+        elif not completed and invite['status'] == 'accepted':
+            user_email = invite['user_email']
+            event_id = invite['event_id']
+            if user_email in DB["users"]:
+                if event_id in DB["users"][user_email]["history"]:
+                    DB["users"][user_email]["history"].remove(event_id)
+
+        return jsonify({"message": "Completion status updated successfully", "invite": invite}), 200
+    except Exception as e:
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+@app.route('/invites/user/<string:email>', methods=['GET'])
+def get_user_invites(email):
+    """Get all invites for a specific user with optional filtering"""
+    user_invites = [inv for inv in DB["invites"] if inv['user_email'] == email]
+
+    # Filter by status and type if provided
+    status = request.args.get('status')
+    invite_type = request.args.get('type')
+
+    if status:
+        user_invites = [inv for inv in user_invites if inv['status'] == status]
+    if invite_type:
+        user_invites = [inv for inv in user_invites if inv['type'] == invite_type]
+
+    # Enrich with event details
+    enriched_invites = []
+    for invite in user_invites:
+        event = DB["events"].get(invite['event_id'])
+        if event:
+            enriched_invites.append({
+                **invite,
+                "event": event
+            })
+        else:
+            enriched_invites.append(invite)
+
+    return jsonify(enriched_invites), 200
 
 # --- Main Execution ---
 if __name__ == '__main__':

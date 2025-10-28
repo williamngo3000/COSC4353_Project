@@ -16,6 +16,7 @@ const AdminNotifications = ({ addNotification }) => {
         recentRegistrations: 0
     });
     const [recentActivity, setRecentActivity] = useState([]);
+    const [userNames, setUserNames] = useState({}); // Cache for email -> name mapping
 
     useEffect(() => {
         fetchAdminStats();
@@ -38,6 +39,13 @@ const AdminNotifications = ({ addNotification }) => {
 
             const events = await eventsRes.json();
             const users = await usersRes.json();
+
+            // Build email -> name mapping
+            const nameMapping = {};
+            users.forEach(user => {
+                nameMapping[user.email] = user.name || user.email;
+            });
+            setUserNames(nameMapping);
 
             // Calculate stats
             const now = new Date();
@@ -109,11 +117,16 @@ const AdminNotifications = ({ addNotification }) => {
         };
 
         const getActivityText = (activity) => {
+            const userName = userNames[activity.user];
+            const userDisplay = userName && userName !== activity.user
+                ? `${userName} (${activity.user})`
+                : activity.user;
+
             switch(activity.type) {
                 case 'registration':
-                    return `New user registered: ${activity.user}`;
+                    return `New user registered: ${userDisplay}`;
                 case 'event_signup':
-                    return `${activity.user} signed up for ${activity.event}`;
+                    return `${userDisplay} signed up for ${activity.event}`;
                 case 'event_created':
                     return `New event created: ${activity.event}`;
                 default:

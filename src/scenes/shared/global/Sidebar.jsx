@@ -141,7 +141,7 @@ const Sidebar = () => {
                               fontFamily='sans-serif'
                               sx={{ m: "15px 0 5px 20px" }}
                             >
-                              Management
+
                             </Typography>
                             <Item
                               title="Manage Users"
@@ -163,7 +163,7 @@ const Sidebar = () => {
                                 fontFamily='sans-serif'
                                 sx={{ m: "15px 0 5px 20px" }}
                             >
-                                Pages
+
                             </Typography>
                             <Item
                                 title="Event Creation Form"
