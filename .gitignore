@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 .md_files
+Backend/config/volunteerapp-3eb0e-firebase-adminsdk-fbsvc-00bcd2c03a.json
 node_modules
 **/venv/
 dist
