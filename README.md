@@ -20,7 +20,8 @@ Navigate to backend folder or wherever app.py file of backend is located
         pip list
 3) .\\venv\\Scripts\\python.exe app.py
 
-Login: 
+Login:
+
     Admin: 
         admin@example.com
         AdminPassword1
