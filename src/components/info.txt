@@ -1,0 +1,2 @@
+Components folder:
+Used to house assets used by multiple areas; Think like a global scale kind of like thing

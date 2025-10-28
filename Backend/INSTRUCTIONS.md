@@ -58,7 +58,7 @@ With the virtual environment active, run the following command to install Flask,
 
 
 
-pip install Flask Flask-Cors "pydantic\[email]" pytest pytest-cov
+pip install Flask Flask-Cors "pydantic[email]" pytest pytest-cov
 
 
 

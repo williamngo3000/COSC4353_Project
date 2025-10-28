@@ -246,8 +246,48 @@ def get_volunteer_history(email):
 
     history_ids = user.get("history", [])
     history_events = [{"id": id, **DB["events"][id]} for id in history_ids if id in DB["events"]]
-    
+
     return jsonify(history_events), 200
+
+@app.route('/user/<string:email>/events', methods=['GET'])
+def get_user_events(email):
+    """Get all events a user has signed up for (for notifications page)"""
+    user = DB["users"].get(email)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    # Get user's event history
+    history_ids = user.get("history", [])
+
+    # Build list of events with full details
+    events = []
+    for event_id in history_ids:
+        if event_id in DB["events"]:
+            event = DB["events"][event_id]
+            events.append({
+                "id": event_id,
+                "event_name": event["event_name"],
+                "description": event["description"],
+                "location": event["location"],
+                "event_date": event["event_date"],
+                "required_skills": event.get("required_skills", []),
+                "urgency": event.get("urgency", "")
+            })
+
+    return jsonify({"events": events}), 200
+
+@app.route('/users', methods=['GET'])
+def get_all_users():
+    """Get all users (for admin statistics)"""
+    users_list = []
+    for email, user_data in DB["users"].items():
+        users_list.append({
+            "email": email,
+            "role": user_data.get("role", "volunteer"),
+            "profileComplete": user_data.get("profile") is not None
+        })
+
+    return jsonify(users_list), 200
 
 # --- Main Execution ---
 if __name__ == '__main__':

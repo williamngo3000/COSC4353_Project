@@ -1,0 +1,4 @@
+Scenes:
+Used for specific pages you are building for admin dashboard
+
+In this case, can be "Users" page, "Forms" page, etc.

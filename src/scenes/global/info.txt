@@ -1,0 +1,3 @@
+NavBar.jsx  -   User end NavBar
+SideBar.jsx -   Admin-side SideBar, technically still a NavBar, just renamed for comprehension
+TopBar.jsx  -   Admin-side TopBar, same as SideBar situation
