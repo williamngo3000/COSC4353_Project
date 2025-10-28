@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProSidebar, Menu, MenuItem } from "react-pro-sidebar";
 import { Box, IconButton, Typography, useTheme } from "@mui/material";
 import { Link } from "react-router-dom";
 import 'react-pro-sidebar/dist/css/styles.css';
-import { tokens } from "../../theme";
+import { tokens } from "../../../theme";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import EventNoteIcon from '@mui/icons-material/EventNote';
@@ -34,6 +34,24 @@ const Sidebar = () => {
     const colors = tokens(theme.palette.mode);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [selected, setSelected] = useState("Dashboard");
+    const [adminName, setAdminName] = useState("Admin");
+
+    useEffect(() => {
+      // Get logged-in user's email from localStorage
+      const userEmail = localStorage.getItem('userEmail');
+
+      if (userEmail) {
+        // Fetch user profile to get full name
+        fetch(`http://localhost:5001/profile/${userEmail}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.full_name) {
+              setAdminName(data.full_name);
+            }
+          })
+          .catch(err => console.error('Failed to load admin name:', err));
+      }
+    }, []);
 
     return (
         <Box
@@ -74,7 +92,7 @@ const Sidebar = () => {
                                 ml="15px"
                               >
                                 <Typography variant="h3" color={colors.grey[100]} fontFamily='sans-serif'>
-                                  Admin Title Bar
+
                                 </Typography>
                                 <IconButton onClick={() => setIsCollapsed(!isCollapsed)}>
                                   <MenuOutlinedIcon />
@@ -102,10 +120,7 @@ const Sidebar = () => {
                                   fontFamily={"sans-serif"}
                                   sx={{ m: "10px 0 0 0" }}
                                 >
-                                  Insert Admin Name Here
-                                </Typography>
-                                <Typography variant="h5" color={colors.green[500]} fontFamily='sans-serif'>
-                                  xD
+                                  {adminName}
                                 </Typography>
                               </Box>
                             </Box>

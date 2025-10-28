@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 export default function EventList() {
 	const [events, setEvents] = useState([]);
 
-    useEffect(() => {
+    const fetchEvents = () => {
         fetch('http://localhost:5001/events')
             .then(res => res.json()) // Read the response and covert to json
             .then(data => {
@@ -21,6 +21,17 @@ export default function EventList() {
                 setEvents(formatted);
             })
             .catch(err => console.error('Failed to load events:', err));
+    };
+
+    useEffect(() => {
+        // Initial fetch
+        fetchEvents();
+
+        // Set up polling - refresh every 5 seconds
+        const interval = setInterval(fetchEvents, 5000);
+
+        // Clean up interval on unmount
+        return () => clearInterval(interval);
     }, []);
 
 	return (

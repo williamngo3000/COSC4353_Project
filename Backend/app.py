@@ -100,6 +100,7 @@ DB = {
             "profile": {
                 "full_name": "John Doe", "address1": "123 Main St", "address2": "Apt 4B",
                 "city": "Houston", "state": "TX", "zip_code": "77002",
+                "phone": "(555) 123-4567",
                 "skills": ["First Aid", "Logistics"], "preferences": "I prefer morning events.",
                 "availability": ["2024-12-01", "2024-12-15"]
             },
@@ -110,6 +111,7 @@ DB = {
             "profile": {
                 "full_name": "Jane Smith", "address1": "456 Admin Ave", "city": "Houston",
                 "state": "TX", "zip_code": "77002",
+                "phone": "(555) 987-6543",
                 "skills": ["Team Leadership", "Public Speaking"], "preferences": "",
                 "availability": ["2024-11-01", "2024-12-01"]
             },
@@ -129,8 +131,43 @@ DB = {
         }
     },
     "skills": ["First Aid", "Logistics", "Event Setup", "Public Speaking", "Registration", "Tech Support", "Catering", "Marketing", "Fundraising", "Photography", "Social Media", "Team Leadership", "Translation"],
-    "urgency_levels": ["Low", "Medium", "High", "Critical"]
+    "urgency_levels": ["Low", "Medium", "High", "Critical"],
+    "notifications": [],
+    "activity_log": []
 }
+
+# --- Helper Functions ---
+from datetime import datetime
+
+def add_notification(message, type="info"):
+    """Add a notification to the notifications list"""
+    notification = {
+        "id": len(DB["notifications"]) + 1,
+        "message": message,
+        "type": type,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "read": False
+    }
+    # Add to beginning
+    DB["notifications"].insert(0, notification)
+    # Keep only last 50 notifications
+    if len(DB["notifications"]) > 50:
+        DB["notifications"] = DB["notifications"][:50]
+    return notification
+
+def add_activity(type, **kwargs):
+    """Add an activity to the activity log"""
+    activity = {
+        "type": type,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        **kwargs
+    }
+    # Add to beginning
+    DB["activity_log"].insert(0, activity)  
+    # Keep only last 50 activities
+    if len(DB["activity_log"]) > 50:
+        DB["activity_log"] = DB["activity_log"][:50]
+    return activity
 
 # --- API Endpoints ---
 
@@ -145,9 +182,13 @@ def register_user():
             "password": user_data.password, "role": "volunteer",
             "profile": {}, "history": []
         }
+
+        # Add notification and activity log
+        add_notification(f"New user registered: {user_data.email}", "info")
+        add_activity("registration", user=user_data.email)
+
         return jsonify({"message": "Registration successful", "user": {"email": user_data.email, "role": "volunteer"}}), 201
     except ValidationError as e:
-        # Fixed the TypeError by loading the JSON string from the validation error
         return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
     except Exception as e:
         return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
@@ -197,17 +238,42 @@ def manage_events():
     if request.method == 'GET':
         event_list = [{"id": id, **event} for id, event in DB["events"].items()]
         return jsonify(event_list), 200
-        
+
     if request.method == 'POST':
         try:
             event_data = EventCreation(**request.json)
             new_id = max(DB["events"].keys()) + 1 if DB["events"] else 1
             DB["events"][new_id] = event_data.model_dump()
+
+            # Add notification and activity log
+            add_notification(f"New event created: {event_data.event_name}", "success")
+            add_activity("event_created", event=event_data.event_name)
+
             return jsonify({"message": "Event created successfully", "event": {"id": new_id, **event_data.model_dump()}}), 201
         except ValidationError as e:
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
         except Exception as e:
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+@app.route('/events/<int:event_id>', methods=['PUT', 'DELETE'])
+def modify_event(event_id):
+    """Update or delete a specific event by ID"""
+    if event_id not in DB["events"]:
+        return jsonify({"message": "Event not found"}), 404
+
+    if request.method == 'PUT':
+        try:
+            event_data = EventCreation(**request.json)
+            DB["events"][event_id] = event_data.model_dump()
+            return jsonify({"message": "Event updated successfully", "event": {"id": event_id, **event_data.model_dump()}}), 200
+        except ValidationError as e:
+            return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+        except Exception as e:
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+    if request.method == 'DELETE':
+        del DB["events"][event_id]
+        return jsonify({"message": "Event deleted successfully"}), 200
 
 @app.route('/data/skills', methods=['GET'])
 def get_skills():
@@ -259,7 +325,7 @@ def get_user_events(email):
     # Get user's event history
     history_ids = user.get("history", [])
 
-    # Build list of events with full details
+    # Create list of events with full details
     events = []
     for event_id in history_ids:
         if event_id in DB["events"]:
@@ -278,18 +344,69 @@ def get_user_events(email):
 
 @app.route('/users', methods=['GET'])
 def get_all_users():
-    """Get all users (for admin statistics)"""
+    """Get all users (for admin statistics and user management)"""
     users_list = []
+    user_id = 1
     for email, user_data in DB["users"].items():
+        profile = user_data.get("profile", {})
         users_list.append({
+            "id": user_id,
             "email": email,
             "role": user_data.get("role", "volunteer"),
-            "profileComplete": user_data.get("profile") is not None
+            "name": profile.get("full_name", "N/A"),
+            "phone": profile.get("phone", "N/A"),
+            "profileComplete": profile is not None and len(profile) > 0
         })
+        user_id += 1
 
     return jsonify(users_list), 200
+
+@app.route('/notifications', methods=['GET'])
+def get_notifications():
+    """Get all notifications for admin"""
+    return jsonify(DB["notifications"]), 200
+
+@app.route('/notifications/<int:notification_id>/read', methods=['PUT'])
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    for notification in DB["notifications"]:
+        if notification["id"] == notification_id:
+            notification["read"] = True
+            return jsonify({"message": "Notification marked as read"}), 200
+    return jsonify({"message": "Notification not found"}), 404
+
+@app.route('/activity', methods=['GET'])
+def get_activity():
+    """Get recent activity log"""
+    return jsonify(DB["activity_log"]), 200
+
+@app.route('/users/<string:email>', methods=['PUT', 'DELETE'])
+def modify_user(email):
+    """Update or delete a specific user by email"""
+    if email not in DB["users"]:
+        return jsonify({"message": "User not found"}), 404
+
+    if request.method == 'PUT':
+        try:
+            data = request.json
+            user = DB["users"][email]
+
+            # Update role if provided
+            if 'role' in data:
+                user['role'] = data['role']
+
+            # Update profile fields if provided
+            if 'name' in data and user.get('profile'):
+                user['profile']['full_name'] = data['name']
+
+            return jsonify({"message": "User updated successfully", "user": {"email": email, **user}}), 200
+        except Exception as e:
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+    if request.method == 'DELETE':
+        del DB["users"][email]
+        return jsonify({"message": "User deleted successfully"}), 200
 
 # --- Main Execution ---
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
-

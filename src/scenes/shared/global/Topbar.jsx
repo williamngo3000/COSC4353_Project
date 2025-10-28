@@ -1,15 +1,15 @@
 import { Box, IconButton, useTheme, Menu, MenuItem, Badge, Typography, Divider } from "@mui/material";
 import { useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ColorModeContext, tokens } from "../../theme";
+import { ColorModeContext, tokens } from "../../../theme";
 import InputBase from "@mui/material/InputBase";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import NotificationsOutlinedIcon from "@mui/icons-material/NotificationsOutlined";
-import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+// import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LogoutIcon from '@mui/icons-material/Logout';
 import SearchIcon from "@mui/icons-material/Search";
-import { mockNotifications } from "../../data/mockNotifications";
+import { mockNotifications } from "../../../data/mockNotifications";
 
 const Topbar = ({ onLogout }) => {
     const theme = useTheme();
@@ -17,28 +17,46 @@ const Topbar = ({ onLogout }) => {
     const colors = tokens(theme.palette.mode);
     const colorMode = useContext(ColorModeContext);
 
-    // Notification dropdown state
+    // Notification dropdown
     const [notificationAnchor, setNotificationAnchor] = useState(null);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // Fetch notifications on component mount
+    // Fetch notifications on component mount and poll for updates
     useEffect(() => {
         fetchNotifications();
+
+        // Poll every 5 seconds for new notifications
+        const interval = setInterval(fetchNotifications, 5000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const fetchNotifications = async () => {
         try {
-            // Should we decide on a service to send SMS/Email for backend, change these here:
-            // const response = await fetch('http://localhost:5001/admin/notifications');
-            // const data = await response.json();
-            // setNotifications(data.notifications);
+            const response = await fetch('http://localhost:5001/notifications');
+            const data = await response.json();
 
-            // For now, we use mock data from mockNotifications.js because I am cheap and don't want to spend the money/time to find a service that's going to do it for free
-            setNotifications(mockNotifications);
-            setUnreadCount(mockNotifications.filter(n => !n.read).length);
+            // Format notifications for display
+            const formattedNotifications = data.map(notif => ({
+                id: notif.id,
+                message: notif.message,
+                time: new Date(notif.time).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                }),
+                read: notif.read
+            }));
+
+            setNotifications(formattedNotifications);
+            setUnreadCount(formattedNotifications.filter(n => !n.read).length);
         } catch (error) {
             console.error("Failed to fetch notifications:", error);
+            // Fallback to mock data if backend fails
+            setNotifications(mockNotifications);
+            setUnreadCount(mockNotifications.filter(n => !n.read).length);
         }
     };
 
@@ -55,17 +73,28 @@ const Topbar = ({ onLogout }) => {
         navigate('/notifications');
     };
 
-    const handleMarkAsRead = (notificationId) => {
+    const handleMarkAsRead = async (notificationId) => {
+        // Optimistic update
         setNotifications(prev =>
             prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
+
+        // Update backend
+        try {
+            await fetch(`http://localhost:5001/notifications/${notificationId}/read`, {
+                method: 'PUT',
+            });
+        } catch (error) {
+            console.error('Failed to mark notification as read:', error);
+        }
     };
 
     const handleLogout = () => {
-        // Clear any authentication data (localStorage, sessionStorage, etc.); Uncomment line below when testing w tokens
+        // Clear authentication data from localStorage
         localStorage.removeItem('token');
-        // Uncomment if needed
+        localStorage.removeItem('userEmail');
+        localStorage.removeItem('userRole');
         sessionStorage.clear();
 
         // Call the onLogout prop if provided
@@ -206,9 +235,9 @@ const Topbar = ({ onLogout }) => {
                 ]}
             </Menu>
 
-            <IconButton>
+            {/* <IconButton>
                 <SettingsOutlinedIcon />
-            </IconButton>
+            </IconButton> */}
 
             <IconButton onClick={handleLogout}>
                 <LogoutIcon />

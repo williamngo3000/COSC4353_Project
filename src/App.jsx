@@ -3,21 +3,21 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // import { ColorModeContext, useMode, tokens } from './theme';
 import { ColorModeContext, useMode } from './theme';
 import { CssBaseline, ThemeProvider } from "@mui/material";
-import Topbar from "./scenes/global/Topbar";
-import Sidebar from "./scenes/global/Sidebar";
-import Navbar from './scenes/global/Navbar';
-import HomePage from './scenes/home';
-import LoginPage from './scenes/login';
-import RegisterPage from './scenes/register';
-import ProfilePage from './scenes/profile';
-import EventManagementPage from './scenes/eventManagement';
-import EventList from './scenes/eventList';
-import Dashboard from "./scenes/dashboard";
-import Users from "./scenes/users";
-import Events from "./scenes/events";
-import Form from "./scenes/form";
-import VolunteerNotifications from "./scenes/notifications/VolunteerNotifications";
-import AdminNotifications from "./scenes/notifications/AdminNotifications";
+import Topbar from "./scenes/shared/global/Topbar";
+import Sidebar from "./scenes/shared/global/Sidebar";
+import Navbar from './scenes/shared/global/Navbar';
+import HomePage from './scenes/shared/home';
+import LoginPage from './scenes/shared/login';
+import RegisterPage from './scenes/shared/register';
+import ProfilePage from './scenes/shared/profile';
+import EventManagementPage from './scenes/admin/eventManagement';
+import EventList from './scenes/volunteer/eventList';
+import Dashboard from "./scenes/admin/dashboard";
+import Users from "./scenes/admin/users";
+import Events from "./scenes/admin/events";
+import Form from "./scenes/admin/form";
+import VolunteerNotifications from "./scenes/shared/notifications/VolunteerNotifications";
+import AdminNotifications from "./scenes/shared/notifications/AdminNotifications";
 import NotificationQueue from './components/Notification';
 import './styles/app.css';
 
@@ -26,9 +26,33 @@ export default function App() {
     const [isSidebar, setIsSidebar] = useState(true);
     const [loggedInUser, setLoggedInUser] = useState(null);
     const [notifications, setNotifications] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Restore user session on app load
+    useEffect(() => {
+        const restoreSession = async () => {
+            const userEmail = localStorage.getItem('userEmail');
+            const userRole = localStorage.getItem('userRole');
+
+            if (userEmail && userRole) {
+                // Restore user from localStorage
+                setLoggedInUser({
+                    email: userEmail,
+                    role: userRole,
+                    profileComplete: true // Assume profile is complete if they were logged in
+                });
+            }
+            setIsLoading(false);
+        };
+
+        restoreSession();
+    }, []);
 
     const handleLogout = () => {
         setLoggedInUser(null);
+        // Clear localStorage on logout
+        localStorage.removeItem('userEmail');
+        localStorage.removeItem('userRole');
     };
 
     // Notification queue management
@@ -49,6 +73,20 @@ export default function App() {
         // document.documentElement.style.setProperty('--app-bg-color', colors.primary[500]);
         document.documentElement.style.setProperty('--app-bg-color', theme.palette.background.default);
     }, [theme.palette.mode]);
+
+    // Show loading state while restoring session
+    if (isLoading) {
+        return (
+            <ColorModeContext.Provider value={colorMode}>
+                <ThemeProvider theme={theme}>
+                    <CssBaseline />
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                        <p>Loading...</p>
+                    </div>
+                </ThemeProvider>
+            </ColorModeContext.Provider>
+        );
+    }
 
     return (
         <ColorModeContext.Provider value={colorMode}>

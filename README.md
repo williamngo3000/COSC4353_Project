@@ -14,7 +14,7 @@ Navigate to backend folder or wherever app.py file of backend is located
 1) python -m venv venv
 2) .\\venv\\Scripts\\activate
     2a) If you do not have dependencies already installed:
-        pip install Flask Flask-Cors "pydantic[email]" pytest pytest-cov
+        pip install Flask Flask-Cors "pydantic[email]" pytest pytest-cov firebase-admin
 
         To check; Will show all dependencies installed in curr. env.:
         pip list

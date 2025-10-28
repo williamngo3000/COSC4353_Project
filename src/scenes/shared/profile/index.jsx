@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CustomMultiSelect from '../../components/CustomMultiSelect';
-import { XIcon } from '../../components/Icons';
-import { US_STATES, SKILLS_LIST } from '../../utils/constants';
+import CustomMultiSelect from '../../../components/CustomMultiSelect';
+import { XIcon } from '../../../components/Icons';
+import { US_STATES, SKILLS_LIST } from '../../../utils/constants';
 
 const ProfilePage = ({ loggedInUser, setLoggedInUser, addNotification }) => {
     const navigate = useNavigate();

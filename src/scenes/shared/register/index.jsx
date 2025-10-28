@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MailIcon, LockIcon } from '../../components/Icons';
+import { MailIcon, LockIcon } from '../../../components/Icons';
 
 const RegisterPage = ({ setLoggedInUser, addNotification }) => {
     const navigate = useNavigate();

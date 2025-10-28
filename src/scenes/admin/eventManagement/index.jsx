@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CustomMultiSelect from '../../components/CustomMultiSelect';
-import { SKILLS_LIST, URGENCY_LEVELS } from '../../utils/constants';
+import CustomMultiSelect from '../../../components/CustomMultiSelect';
+import { SKILLS_LIST, URGENCY_LEVELS } from '../../../utils/constants';
 
 const EventManagementPage = ({ addNotification }) => {
     const navigate = useNavigate();
@@ -31,7 +31,6 @@ const EventManagementPage = ({ addNotification }) => {
             if (!res.ok) throw new Error(data?.message || 'Request failed');
 
             addNotification("Event created successfully!", "success");
-            navigate('/eventlist');
         } catch (err) {
             console.error(err);
             addNotification(`Create failed: ${err.message}`, 'error');
@@ -39,38 +38,38 @@ const EventManagementPage = ({ addNotification }) => {
     };
 
     return (
-        <div className="content-card">
-            <h2>Create a New Event</h2>
-            <p>Fill out the details below to post a new event for volunteers.</p>
+        <div className="content-card" style={{color: 'black'}}>
+            <h2 style={{color: 'black'}}>Create a New Event</h2>
+            <p style={{color: 'black'}}>Fill out the details below to post a new event for volunteers.</p>
 
-            <form onSubmit={handleEventCreation} style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
+            <form onSubmit={handleEventCreation} style={{display: 'flex', flexDirection: 'column', gap: '1.5rem', color: 'black'}}>
                 <div>
-                    <label className="form-label">Event Name</label>
-                    <input name="name" type="text" maxLength="100" required className="form-input-full" />
+                    <label className="form-label" style={{color: 'black'}}>Event Name</label>
+                    <input name="name" type="text" maxLength="100" required className="form-input-full" style={{color: 'black'}} />
                 </div>
                 <div>
-                    <label className="form-label">Event Description</label>
-                    <textarea name="description" rows="5" required className="form-textarea"></textarea>
+                    <label className="form-label" style={{color: 'black'}}>Event Description</label>
+                    <textarea name="description" rows="5" required className="form-textarea" style={{color: 'black'}}></textarea>
                 </div>
                 <div>
-                    <label className="form-label">Location</label>
-                    <textarea name="location" rows="3" required className="form-textarea"></textarea>
+                    <label className="form-label" style={{color: 'black'}}>Location</label>
+                    <textarea name="location" rows="3" required className="form-textarea" style={{color: 'black'}}></textarea>
                 </div>
                 <div className="form-grid form-grid-cols-3">
                     <div>
-                        <label className="form-label">Required Skills</label>
+                        <label className="form-label" style={{color: 'black'}}>Required Skills</label>
                         <CustomMultiSelect options={SKILLS_LIST} selected={requiredSkills} onChange={setRequiredSkills} placeholder="Select required skills" />
                     </div>
                     <div>
-                        <label className="form-label">Urgency</label>
-                        <select name="urgency" required className="form-select">
+                        <label className="form-label" style={{color: 'black'}}>Urgency</label>
+                        <select name="urgency" required className="form-select" style={{color: 'black'}}>
                             <option value="">Select Urgency</option>
                             {URGENCY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="form-label">Event Date</label>
-                        <input name="date" type="date" required className="form-input-full"/>
+                        <label className="form-label" style={{color: 'black'}}>Event Date</label>
+                        <input name="date" type="date" required className="form-input-full" style={{color: 'black'}}/>
                     </div>
                 </div>
                 <div className="form-actions">

@@ -15,27 +15,6 @@ export const mockNotifications = [
         time: "1 hour ago",
         read: false,
         type: "event"
-    },
-    {
-        id: 3,
-        message: "10 volunteers signed up for Food Drive",
-        time: "3 hours ago",
-        read: true,
-        type: "signup"
-    },
-    {
-        id: 4,
-        message: "Profile updated by volunteer@example.com",
-        time: "5 hours ago",
-        read: true,
-        type: "profile"
-    },
-    {
-        id: 5,
-        message: "New event: Community Garden Planting",
-        time: "1 day ago",
-        read: true,
-        type: "event"
     }
 ];
 

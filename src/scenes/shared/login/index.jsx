@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MailIcon, LockIcon } from '../../components/Icons';
+import { MailIcon, LockIcon } from '../../../components/Icons';
 
 const LoginPage = ({ setLoggedInUser, addNotification }) => {
     const navigate = useNavigate();
@@ -29,6 +29,11 @@ const LoginPage = ({ setLoggedInUser, addNotification }) => {
 
             const user = data.user;
             setLoggedInUser(user);
+
+            // Save user data to localStorage for session persistence
+            localStorage.setItem('userEmail', user.email);
+            localStorage.setItem('userRole', user.role);
+
             addNotification("Login successful!", "success");
 
             if (user.role === "admin") {

@@ -1,8 +1,8 @@
 import { Box, Button, IconButton, Typography, useTheme } from "@mui/material";
-import { tokens } from "../../theme";
+import { tokens } from "../../../theme";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import EmailIcon from "@mui/icons-material/Email";
-import Header from "../../components/Header";
+import Header from "../../../components/Header";
 
 const Dashboard = () => {
   const theme = useTheme();
@@ -26,15 +26,15 @@ const Dashboard = () => {
         gap="20px"
       >
         {/* ROW 1 */}
-        <Box
+        {/* <Box
           gridColumn="span 3"
           backgroundColor={colors.primary[400]}
           display="flex"
           alignItems="center"
           justifyContent="center"
-        >
+        > */}
           {/* FIRST BOX */}
-          <Typography>
+          {/* <Typography>
             TEMP PLACEHOLDER
           </Typography>
 
@@ -74,7 +74,8 @@ const Dashboard = () => {
             TEMP PLACEHOLDER
           </Typography>
 
-        </Box>
+        </Box> */} 
+
 
         {/* ROW 2 */}
         <Box
@@ -107,6 +108,7 @@ const Dashboard = () => {
             </Box>
             <Box>
               <IconButton>
+                {/* Button here to download files as listed in the "Complete Project with Demo */}
                 <DownloadOutlinedIcon
                   sx={{ fontSize: "26px", color: colors.green[500] }}
                 />

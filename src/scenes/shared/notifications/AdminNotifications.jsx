@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Box, useTheme } from "@mui/material";
-import { tokens } from "../../theme";
+import { Box, Checkbox, useTheme } from "@mui/material";
+import { tokens } from "../../../theme";
+import PersonIcon from '@mui/icons-material/Person';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 const AdminNotifications = ({ addNotification }) => {
     const theme = useTheme();
@@ -16,6 +19,11 @@ const AdminNotifications = ({ addNotification }) => {
 
     useEffect(() => {
         fetchAdminStats();
+
+        // Poll for updates every 10 seconds
+        const interval = setInterval(fetchAdminStats, 10000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const fetchAdminStats = async () => {
@@ -46,12 +54,24 @@ const AdminNotifications = ({ addNotification }) => {
                 }).length
             });
 
-            // Mock recent activity - replace with real data from backend
-            setRecentActivity([
-                { type: 'registration', user: 'john@example.com', time: '2 hours ago' },
-                { type: 'event_signup', user: 'jane@example.com', event: 'Food Drive', time: '5 hours ago' },
-                { type: 'event_created', event: 'Beach Cleanup', time: '1 day ago' },
-            ]);
+            // Fetch real activity data from backend
+            const activityRes = await fetch('http://localhost:5001/activity');
+            const activity = await activityRes.json();
+
+            // Format activity data for display
+            const formattedActivity = activity.map(act => ({
+                type: act.type,
+                user: act.user,
+                event: act.event,
+                time: new Date(act.time).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                })
+            }));
+
+            setRecentActivity(formattedActivity);
 
         } catch (error) {
             addNotification(error.message || 'Failed to load statistics', 'error');
@@ -81,10 +101,10 @@ const AdminNotifications = ({ addNotification }) => {
     const ActivityItem = ({ activity }) => {
         const getActivityIcon = (type) => {
             switch(type) {
-                case 'registration': return '👤';
-                case 'event_signup': return '✅';
-                case 'event_created': return '📅';
-                default: return '📋';
+                case 'registration': return <PersonIcon />;
+                case 'event_signup': return <CheckBoxIcon />;
+                case 'event_created': return <CalendarMonthIcon />;
+                default: return <span></span>;
             }
         };
 
@@ -113,9 +133,9 @@ const AdminNotifications = ({ addNotification }) => {
                     }
                 }}
             >
-                <span style={{ fontSize: '1.5rem', marginRight: '1rem' }}>
+                <Box sx={{ fontSize: '1.5rem', marginRight: '1rem', display: 'flex', alignItems: 'center' }}>
                     {getActivityIcon(activity.type)}
-                </span>
+                </Box>
                 <div style={{ flex: 1 }}>
                     <p style={{ color: colors.grey[100], marginBottom: '0.25rem' }}>
                         {getActivityText(activity)}
