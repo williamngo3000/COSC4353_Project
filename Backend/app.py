@@ -106,19 +106,28 @@ DB = {
         "volunteer@example.com": {
             "password": "Password1", "role": "volunteer",
             "profile": {
-                "full_name": "John Doe", "address1": "123 Main St", "address2": "Apt 4B",
-                "city": "Houston", "state": "TX", "zip_code": "77002",
+                "full_name": "John Doe", 
+                "address1": "123 Main St", 
+                "address2": "Apt 4B",
+                "city": "Houston", 
+                "state": "TX", 
+                "zip_code": "77002",
                 "phone": "(555) 123-4567",
-                "skills": ["First Aid", "Logistics"], "preferences": "I prefer morning events.",
+                "skills": ["First Aid", "Logistics"], 
+                "preferences": "I prefer morning events.",
                 "availability": ["2024-12-01", "2024-12-15"]
             },
             "history": [1]
         },
         "admin@example.com": {
-            "password": "AdminPassword1", "role": "admin",
+            "password": "AdminPassword1", 
+            "role": "admin",
             "profile": {
-                "full_name": "Jane Smith", "address1": "456 Admin Ave", "city": "Houston",
-                "state": "TX", "zip_code": "77002",
+                "full_name": "Jane Smith", 
+                "address1": "456 Admin Ave", 
+                "city": "Houston",
+                "state": "TX", 
+                "zip_code": "77002",
                 "phone": "(555) 987-6543",
                 "skills": ["Team Leadership", "Public Speaking"], "preferences": "",
                 "availability": ["2024-11-01", "2024-12-01"]
@@ -128,14 +137,24 @@ DB = {
     },
     "events": {
         1: {
-            "event_name": "Community Food Drive", "description": "Annual food drive to support local families.",
-            "location": "Downtown Community Center", "required_skills": ["Logistics", "Event Setup"],
-            "urgency": "High", "event_date": "2024-12-01", "volunteer_limit": 10, "status": "open"
+            "event_name": "Community Food Drive", 
+            "description": "Annual food drive to support local families.",
+            "location": "Downtown Community Center", 
+            "required_skills": ["Logistics", "Event Setup"],
+            "urgency": "High", 
+            "event_date": "2024-12-01", 
+            "volunteer_limit": 10, 
+            "status": "open"
         },
         2: {
-            "event_name": "Park Cleanup Day", "description": "Help us clean and beautify Memorial Park.",
-            "location": "Memorial Park", "required_skills": ["Event Setup"],
-            "urgency": "Medium", "event_date": "2024-11-20", "volunteer_limit": None, "status": "open"
+            "event_name": "Park Cleanup Day", 
+            "description": "Help us clean and beautify Memorial Park.",
+            "location": "Memorial Park", 
+            "required_skills": ["Event Setup"],
+            "urgency": "Medium", 
+            "event_date": "2024-11-20", 
+            "volunteer_limit": None, 
+            "status": "open"
         }
     },
     "skills": ["First Aid", "Logistics", "Event Setup", "Public Speaking", "Registration", "Tech Support", "Catering", "Marketing", "Fundraising", "Photography", "Social Media", "Team Leadership", "Translation"],
