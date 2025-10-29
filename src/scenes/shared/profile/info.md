@@ -1,0 +1,1 @@
+Profile page for user side only; Admin side was not implemented

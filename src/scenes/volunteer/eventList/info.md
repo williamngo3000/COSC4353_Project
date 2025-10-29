@@ -1,1 +1,1 @@
-User side
+User side; Shows events listed

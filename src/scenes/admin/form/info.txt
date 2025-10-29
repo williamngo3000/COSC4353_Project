@@ -1,1 +1,1 @@
-Currently inactive; Utilized "eventManagement" instead
+Currently inactive + depreciated; Utilized "eventManagement" instead

@@ -57,7 +57,7 @@ const AdminNotifications = ({ addNotification }) => {
                 totalVolunteers: users.length,
                 recentRegistrations: users.filter(u => {
                     // Placeholder: filter users registered in last 7 days
-                    // You'll need to add registration_date to your user model
+                    // Will need to add user reg. date another time
                     return true;
                 }).length
             });
