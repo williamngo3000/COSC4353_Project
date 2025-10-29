@@ -1,5 +1,4 @@
 // Mock notification data for admin dashboard
-// Replace this with real API calls when backend is ready (if firebase is good... T_T)
 
 export const mockNotifications = [
     {
