@@ -1,9 +1,20 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from pydantic import BaseModel, field_validator, ValidationError
 from typing import List, Optional
 import re
 import json
+import os
+
+app = Flask(__name__)
+CORS(app)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///volunteer.db"  # creates Backend/volunteer.db
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
+
 
 # --- Pydantic Models for Data Validation ---
 
@@ -221,7 +232,7 @@ def register_user():
         user_data = UserRegistration(**request.json)
         if user_data.email in DB["users"]:
             return jsonify({"message": "User with this email already exists"}), 409
-        
+
         DB["users"][user_data.email] = {
             "password": user_data.password, "role": "volunteer",
             "profile": {}, "history": []
@@ -242,10 +253,10 @@ def login_user():
     try:
         login_data = UserLogin(**request.json)
         user = DB["users"].get(login_data.email)
-        
+
         if not user or user["password"] != login_data.password:
             return jsonify({"message": "Invalid email or password"}), 401
-            
+
         return jsonify({
             "message": "Login successful",
             "user": {
@@ -337,7 +348,7 @@ def modify_event(event_id):
 @app.route('/data/skills', methods=['GET'])
 def get_skills():
     return jsonify(DB["skills"]), 200
-    
+
 @app.route('/data/urgency', methods=['GET'])
 def get_urgency_levels():
     return jsonify(DB["urgency_levels"]), 200
@@ -354,13 +365,13 @@ def get_volunteer_matches(event_id):
             profile = user_data["profile"]
             has_skill = any(skill in profile.get("skills", []) for skill in event["required_skills"])
             is_available = event["event_date"] in profile.get("availability", [])
-            
+
             if has_skill and is_available:
                 matches.append({
                     "email": email, "full_name": profile["full_name"],
                     "skills": profile["skills"]
                 })
-            
+
     return jsonify(matches), 200
 
 @app.route('/history/<string:email>', methods=['GET'])
@@ -640,4 +651,8 @@ def get_user_invites(email):
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    with app.app_context():
+        db.create_all()
+        print("Database initialized at:", os.path.abspath("voluunteer.db"))
+    app.run(debug=True, port=5002)
+
