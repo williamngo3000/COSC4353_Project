@@ -16,6 +16,9 @@ const Events = () => {
   const [eventVolunteers, setEventVolunteers] = useState({});
   const [editingEvent, setEditingEvent] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterUrgency, setFilterUrgency] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
 
   // Fetch events from backend API
   const fetchEvents = () => {
@@ -231,16 +234,121 @@ const Events = () => {
     }));
   };
 
+  // Filter events based on search and filters
+  const filteredRows = rows.filter(event => {
+    const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          event.location.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesUrgency = !filterUrgency || event.urgency === filterUrgency;
+    const matchesStatus = !filterStatus || event.status === filterStatus;
+
+    return matchesSearch && matchesUrgency && matchesStatus;
+  });
+
   return (
     <Box m="20px" fontFamily={"sans-serif"}>
       <Header title="Events" subtitle="List of all volunteer events - Click to expand" />
+
+      {/* Search and Filter Section */}
+      <Box display="flex" gap="15px" mb="20px" flexWrap="wrap">
+        <TextField
+          label="Search events..."
+          variant="outlined"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{
+            flex: 1,
+            minWidth: '250px',
+            '& .MuiInputLabel-root': { color: colors.grey[100] },
+            '& .MuiOutlinedInput-root': {
+              color: colors.grey[100],
+              '& fieldset': { borderColor: colors.grey[100] },
+              '&:hover fieldset': { borderColor: colors.grey[100] },
+              '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
+            }
+          }}
+        />
+        <FormControl sx={{ minWidth: 150 }}>
+          <InputLabel sx={{ color: colors.grey[100], '&.Mui-focused': { color: colors.indigo[500] } }}>
+            Urgency
+          </InputLabel>
+          <Select
+            value={filterUrgency}
+            label="Urgency"
+            onChange={(e) => setFilterUrgency(e.target.value)}
+            sx={{
+              color: colors.grey[100],
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.indigo[500] },
+              '& .MuiSvgIcon-root': { color: colors.grey[100] }
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  backgroundColor: colors.primary[400],
+                  '& .MuiMenuItem-root': {
+                    color: colors.grey[100],
+                    '&:hover': { backgroundColor: colors.grey[700] },
+                    '&.Mui-selected': { backgroundColor: colors.grey[900] }
+                  }
+                }
+              }
+            }}
+          >
+            <MenuItem value="">All</MenuItem>
+            <MenuItem value="Low">Low</MenuItem>
+            <MenuItem value="Medium">Medium</MenuItem>
+            <MenuItem value="High">High</MenuItem>
+            <MenuItem value="Critical">Critical</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl sx={{ minWidth: 150 }}>
+          <InputLabel sx={{ color: colors.grey[100], '&.Mui-focused': { color: colors.indigo[500] } }}>
+            Status
+          </InputLabel>
+          <Select
+            value={filterStatus}
+            label="Status"
+            onChange={(e) => setFilterStatus(e.target.value)}
+            sx={{
+              color: colors.grey[100],
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.indigo[500] },
+              '& .MuiSvgIcon-root': { color: colors.grey[100] }
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  backgroundColor: colors.primary[400],
+                  '& .MuiMenuItem-root': {
+                    color: colors.grey[100],
+                    '&:hover': { backgroundColor: colors.grey[700] },
+                    '&.Mui-selected': { backgroundColor: colors.grey[900] }
+                  }
+                }
+              }
+            }}
+          >
+            <MenuItem value="">All</MenuItem>
+            <MenuItem value="open">Open</MenuItem>
+            <MenuItem value="closed">Closed</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
       <Box m="40px 0 0 0">
         {rows.length === 0 ? (
           <Typography sx={{ textAlign: 'center', color: colors.grey[300], mt: 4 }}>
             No events created yet
           </Typography>
+        ) : filteredRows.length === 0 ? (
+          <Typography sx={{ textAlign: 'center', color: colors.grey[300], mt: 4 }}>
+            No events match your search criteria
+          </Typography>
         ) : (
-          rows.map((event) => (
+          filteredRows.map((event) => (
             <Box
               key={event.id}
               mb="10px"

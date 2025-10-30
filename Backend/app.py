@@ -137,13 +137,13 @@ DB = {
     },
     "events": {
         1: {
-            "event_name": "Community Food Drive", 
+            "event_name": "Community Food Drive",
             "description": "Annual food drive to support local families.",
-            "location": "Downtown Community Center", 
+            "location": "Downtown Community Center",
             "required_skills": ["Logistics", "Event Setup"],
-            "urgency": "High", 
-            "event_date": "2024-12-01", 
-            "volunteer_limit": 10, 
+            "urgency": "High",
+            "event_date": "9999-01-01",
+            "volunteer_limit": 10,
             "status": "open"
         },
         2: {

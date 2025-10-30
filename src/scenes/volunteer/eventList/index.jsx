@@ -6,6 +6,8 @@ const EventList = ({ addNotification }) => {
     const [loading, setLoading] = useState(true);
     const [requestedEvents, setRequestedEvents] = useState(new Set());
     const [acceptedEvents, setAcceptedEvents] = useState(new Set());
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterUrgency, setFilterUrgency] = useState('');
 
     const fetchEvents = () => {
         fetch('http://localhost:5001/events')
@@ -210,13 +212,95 @@ const EventList = ({ addNotification }) => {
         );
     }
 
+    // Filter events based on search and filters
+    const filteredEvents = events.filter(ev => {
+        const matchesSearch = ev.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              ev.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              ev.location.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesUrgency = !filterUrgency || ev.urgency === filterUrgency;
+
+        return matchesSearch && matchesUrgency;
+    });
+
     return (
         <div style={{ textAlign: 'center', marginTop: '5rem' }}>
             <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937' }}>Event List:</h1>
+
+            {/* Search and Filter Section */}
+            <div style={{
+                display: 'flex',
+                gap: '1rem',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginTop: '2rem',
+                marginBottom: '1rem',
+                flexWrap: 'wrap'
+            }}>
+                <input
+                    type="text"
+                    placeholder="Search events..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{
+                        padding: '0.75rem',
+                        fontSize: '1rem',
+                        border: '2px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        minWidth: '300px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s',
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#BD0000'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                />
+                <select
+                    value={filterUrgency}
+                    onChange={(e) => setFilterUrgency(e.target.value)}
+                    style={{
+                        padding: '0.75rem',
+                        fontSize: '1rem',
+                        border: '2px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        minWidth: '150px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                        backgroundColor: 'white'
+                    }}
+                >
+                    <option value="">All Urgencies</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                </select>
+                {(searchTerm || filterUrgency) && (
+                    <button
+                        onClick={() => {
+                            setSearchTerm('');
+                            setFilterUrgency('');
+                        }}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            fontSize: '1rem',
+                            backgroundColor: '#6b7280',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer',
+                            fontWeight: '500'
+                        }}
+                    >
+                        Clear Filters
+                    </button>
+                )}
+            </div>
+
             {events.length === 0 ? (
                 <p style={{ fontSize: '1.5rem', color: '#6b7280', marginTop: '2rem' }}>No current events</p>
+            ) : filteredEvents.length === 0 ? (
+                <p style={{ fontSize: '1.5rem', color: '#6b7280', marginTop: '2rem' }}>No events match your search criteria</p>
             ) : (
-                [...events].sort((a, b) => new Date(a.date) - new Date(b.date)).map(ev => (
+                [...filteredEvents].sort((a, b) => new Date(a.date) - new Date(b.date)).map(ev => (
                     <div key={ev.id} className="border border-gray-300 rounded-lg p-4 my-4 shadow-sm bg-white">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#BD0000' }}> {ev.name} </h2>
