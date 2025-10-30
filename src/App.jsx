@@ -32,9 +32,30 @@ export default function App() {
     useEffect(() => {
         const restoreSession = async () => {
             const userEmail = localStorage.getItem('userEmail');
-            const userRole = localStorage.getItem('userRole');
+            
+            if (userEmail) { 
+                try { 
+                   const response = await fetch(`http://127.0.0.1:5002/api/session?email=${userEmail}`);
+                   const data = await response.json(); 
 
-            if (userEmail && userRole) {
+                    if (response.ok) { 
+                        setLoggedInUser({ 
+                            email: data.email, 
+                            role: data.role, 
+                            profileComplete: true 
+                        });
+                    } else { 
+                      console.error("Session restore failed:", data.error);
+                      localStorage.removeItem('userEmail');
+                      localStorage.removeItem('userRole');
+
+                    }
+                } catch (error) { 
+                    console.error ("Error restroing session:", error); 
+                }
+            } else { 
+            const userRole = localStorage.getItem('userRole');
+            if (userRole) {
                 // Restore user from localStorage
                 setLoggedInUser({
                     email: userEmail,
@@ -42,6 +63,7 @@ export default function App() {
                     profileComplete: true // Assume profile is complete if they were logged in
                 });
             }
+        }
             setIsLoading(false);
         };
 
