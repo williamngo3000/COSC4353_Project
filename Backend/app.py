@@ -302,9 +302,16 @@ def manage_events():
         # Check and update event statuses before returning
         check_all_events_status()
 
+        # Check if we should only return open events (for invite dropdowns)
+        only_open = request.args.get('only_open', 'false').lower() == 'true'
+
         # Add volunteer count to each event
         event_list = []
         for id, event in DB["events"].items():
+            # Filter out closed events if only_open is true
+            if only_open and event.get("status") == "closed":
+                continue
+
             event_data = {"id": id, **event}
             event_data["current_volunteers"] = get_event_volunteer_count(id)
             event_list.append(event_data)

@@ -41,7 +41,7 @@ const Users = ({ addNotification }) => {
 
   // Fetch events for invite dropdown
   const fetchEvents = () => {
-    fetch('http://localhost:5001/events')
+    fetch('http://localhost:5001/events?only_open=true')
       .then(res => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);

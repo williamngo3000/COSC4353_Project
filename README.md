@@ -10,15 +10,15 @@ npm install (install dependencies)
 npm run dev (view dev site)
 
 To run python Flask backend:
-Navigate to backend folder or wherever app.py file of backend is located
-1) python -m venv venv
-2) .\\venv\\Scripts\\activate
-    2a) If you do not have dependencies already installed:
-        pip install Flask Flask-Cors "pydantic[email]" pytest pytest-cov firebase-admin
+1) Navigate to backend folder or wherever app.py file of backend is located
+2) python -m venv venv
+3) .\\venv\\Scripts\\activate
+    3a) If you do not have dependencies already installed:
+        pip install Flask Flask-Cors "pydantic[email]" pytest pytest-cov
 
         To check; Will show all dependencies installed in curr. env.:
         pip list
-3) .\\venv\\Scripts\\python.exe app.py
+4) .\\venv\\Scripts\\python.exe app.py
 
 Login:
 

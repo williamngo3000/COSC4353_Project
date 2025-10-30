@@ -11,6 +11,7 @@ const EventManagementPage = ({ addNotification }) => {
         e.preventDefault();
 
         const formData = new FormData(e.target);
+        const volunteerLimit = formData.get('volunteer_limit');
         const eventFormData = {
             event_name: formData.get('name'),
             description: formData.get('description'),
@@ -18,6 +19,7 @@ const EventManagementPage = ({ addNotification }) => {
             required_skills: requiredSkills,
             urgency: formData.get('urgency'),
             event_date: formData.get('date'),
+            volunteer_limit: volunteerLimit ? parseInt(volunteerLimit) : null,
         };
 
         try {
@@ -71,6 +73,20 @@ const EventManagementPage = ({ addNotification }) => {
                         <label className="form-label" style={{color: 'black'}}>Event Date</label>
                         <input name="date" type="date" required className="form-input-full" style={{color: 'black'}}/>
                     </div>
+                </div>
+                <div>
+                    <label className="form-label" style={{color: 'black'}}>Volunteer Limit (Optional)</label>
+                    <input
+                        name="volunteer_limit"
+                        type="number"
+                        min="1"
+                        placeholder="Leave empty for unlimited volunteers"
+                        className="form-input-full"
+                        style={{color: 'black'}}
+                    />
+                    <small style={{color: '#666', display: 'block', marginTop: '0.25rem'}}>
+                        Set a maximum number of volunteers for this event, or leave blank for no limit.
+                    </small>
                 </div>
                 <div className="form-actions">
                     <button type="submit" className="button-submit">Create Event</button>

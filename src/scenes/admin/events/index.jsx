@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme, IconButton, Collapse, Checkbox, TextField, Button } from "@mui/material";
+import { Box, Typography, useTheme, IconButton, Collapse, Checkbox, TextField, Button, Select, MenuItem, InputLabel, FormControl, OutlinedInput, Chip } from "@mui/material";
 import { tokens } from "../../../theme";
 import Header from "../../../components/Header";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -6,6 +6,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useState, useEffect } from "react";
+import { SKILLS_LIST } from '../../../utils/constants';
 
 const Events = () => {
   const theme = useTheme();
@@ -166,7 +167,7 @@ const Events = () => {
       name: event.name,
       description: event.description,
       location: event.location,
-      requiredSkills: Array.isArray(event.requiredSkills) ? event.requiredSkills.join(', ') : '',
+      requiredSkills: Array.isArray(event.requiredSkills) ? event.requiredSkills : [],
       urgency: event.urgency,
       date: event.date,
       volunteerLimit: event.volunteerLimit || '',
@@ -187,7 +188,7 @@ const Events = () => {
           event_name: editForm.name,
           description: editForm.description,
           location: editForm.location,
-          required_skills: editForm.requiredSkills.split(',').map(s => s.trim()).filter(s => s),
+          required_skills: editForm.requiredSkills,
           urgency: editForm.urgency,
           event_date: editForm.date,
           volunteer_limit: editForm.volunteerLimit ? parseInt(editForm.volunteerLimit) : null,
@@ -206,7 +207,7 @@ const Events = () => {
               name: editForm.name,
               description: editForm.description,
               location: editForm.location,
-              requiredSkills: editForm.requiredSkills.split(',').map(s => s.trim()).filter(s => s),
+              requiredSkills: editForm.requiredSkills,
               urgency: editForm.urgency,
               date: editForm.date,
               volunteerLimit: editForm.volunteerLimit ? parseInt(editForm.volunteerLimit) : null,
@@ -269,7 +270,7 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
@@ -286,7 +287,7 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
@@ -301,25 +302,57 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
-                    <TextField
-                      label="Required Skills (comma-separated)"
-                      value={editForm.requiredSkills}
-                      onChange={(e) => handleFormChange('requiredSkills', e.target.value)}
-                      fullWidth
-                      sx={{
-                        '& .MuiInputLabel-root': { color: colors.grey[100] },
-                        '& .MuiOutlinedInput-root': {
-                          color: colors.grey[100],
-                          '& fieldset': { borderColor: colors.grey[100] },
-                          '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
-                        }
-                      }}
-                    />
+                    <FormControl fullWidth>
+                      <InputLabel sx={{ color: colors.grey[100], '&.Mui-focused': { color: colors.indigo[500] } }}>
+                        Required Skills
+                      </InputLabel>
+                      <Select
+                        multiple
+                        value={editForm.requiredSkills || []}
+                        onChange={(e) => handleFormChange('requiredSkills', e.target.value)}
+                        input={<OutlinedInput label="Required Skills" />}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((value) => (
+                              <Chip key={value} label={value} sx={{ backgroundColor: colors.grey[300], color: colors.grey[900] }} />
+                            ))}
+                          </Box>
+                        )}
+                        sx={{
+                          color: colors.primary[100],
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: colors.grey[100] },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.indigo[500] },
+                          '& .MuiSvgIcon-root': { color: colors.grey[100] }
+                        }}
+                        MenuProps={{
+                          PaperProps: {
+                            sx: {
+                              backgroundColor: colors.primary[400],
+                              '& .MuiMenuItem-root': {
+                                color: colors.grey[100],
+                                '&:hover': { backgroundColor: colors.grey[700] },
+                                '&.Mui-selected': {
+                                  backgroundColor: colors.grey[900],
+                                  '&:hover': { backgroundColor: colors.grey[700] }
+                                }
+                              }
+                            }
+                          }
+                        }}
+                      >
+                        {SKILLS_LIST.map((skill) => (
+                          <MenuItem key={skill} value={skill}>
+                            <Checkbox checked={(editForm.requiredSkills || []).indexOf(skill) > -1} />
+                            <Typography>{skill}</Typography>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                     <TextField
                       label="Urgency"
                       value={editForm.urgency}
@@ -331,7 +364,7 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
@@ -350,7 +383,7 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
@@ -367,7 +400,7 @@ const Events = () => {
                           color: colors.grey[100],
                           '& fieldset': { borderColor: colors.grey[100] },
                           '&:hover fieldset': { borderColor: colors.grey[100] },
-                          '&.Mui-focused fieldset': { borderColor: colors.blueAccent[500] }
+                          '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
                         }
                       }}
                     />
