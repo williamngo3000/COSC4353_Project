@@ -970,5 +970,5 @@ def init_db():
 if __name__ == '__main__':
     with app.app_context():
         init_db()  #Create and populate DB
-        print(f"Database initialized at: {os.path.join(BASE_DIR, 'volunteer_combined.db')}")
+        print(f"Database initialized at: {os.path.join(BASE_DIR, 'volunteer.db')}")
     app.run(debug=True, port=5001)
