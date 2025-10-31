@@ -78,13 +78,14 @@ Use the command for your operating system to start the Flask server.
 
 For Windows:
 
-.\\venv\\Scripts\\python.exe app.py
+.\\venv\\Scripts\\python.exe app2.py
 
 
 
 For macOS/Linux:
+source venv/bin/active
 
-./venv/bin/python app.py
+/venv/bin/python app2.py
 
 
 
