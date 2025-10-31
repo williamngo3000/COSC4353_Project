@@ -102,5 +102,5 @@ if __name__ == "__main__":
     from app2 import app
     with app.app_context():
         db.create_all()
-        print("✅ Database initialized at:", os.path.abspath("volunteer.db"))
+        print("Database initialized at:", os.path.abspath("volunteer.db"))
 
