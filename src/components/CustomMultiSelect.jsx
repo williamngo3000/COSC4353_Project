@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDownIcon, CheckIcon } from './Icons';
 
-const CustomMultiSelect = ({ options, selected, onChange, placeholder }) => {
+const CustomMultiSelect = ({ options, selected, onChange, placeholder, bgColor, textColor}) => {
     const [isOpen, setIsOpen] = useState(false);
 
     const toggleOption = (option) => {
@@ -17,6 +17,7 @@ const CustomMultiSelect = ({ options, selected, onChange, placeholder }) => {
                 type="button"
                 className="multiselect-button"
                 onClick={() => setIsOpen(!isOpen)}
+                style={{backgroundColor: bgColor, color: textColor}}
             >
                 <span className="multiselect-placeholder">
                     {selected.length > 0 ? selected.join(', ') : placeholder}
@@ -26,13 +27,16 @@ const CustomMultiSelect = ({ options, selected, onChange, placeholder }) => {
                 </span>
             </button>
             {isOpen && (
-                <div className="multiselect-dropdown">
+                <div className="multiselect-dropdown"
+                style={{backgroundColor: bgColor, color: textColor}}
+                >
                     <ul className="multiselect-list">
                         {options.map(option => (
                             <li
                                 key={option}
                                 className="multiselect-item"
                                 onClick={() => toggleOption(option)}
+                                style={{ color: textColor, backgroundColor: 'transparent' }}
                             >
                                 <span className={selected.includes(option) ? 'multiselect-item-text-selected' : ''}>
                                     {option}

@@ -41,7 +41,12 @@ const RegisterPage = ({ setLoggedInUser, addNotification }) => {
                 throw new Error(data?.message);
             }
 
-            setLoggedInUser(data.user);
+            // localstorage to avoid later errors
+            if (data.user) {
+                localStorage.setItem('userEmail', data.user.email);
+                localStorage.setItem('userRole', data.user.role || 'volunteer');
+                setLoggedInUser(data.user);
+            }
             addNotification('Registration successful! Please complete your profile.', 'success');
             navigate('/profile');
         } catch (err) {
