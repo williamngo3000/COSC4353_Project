@@ -2,12 +2,12 @@ from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
-from models import db, UserCredentials  # import db from models
+from models import db, UserCredentials, EventDetails
 import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173"])  # Allow React frontend to call Flask
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///instance/volunteer.db"
 
 
 #  Database configuration — create & bind immediately
@@ -36,6 +36,28 @@ def register_user():
 
     return jsonify({"message": "User created successfully"}), 201
 
+@app.route("/api/events", methods=["GET"])
+def get_events():
+    from models import EventDetails  # import inside to avoid circular dependency
+
+    events = EventDetails.query.all()
+    if not events:
+        return jsonify({"message": "No events found"}), 200
+
+    result = []
+    for e in events:
+        result.append({
+            "id": e.id,
+            "event_name": e.event_name,
+            "city": e.city,
+            "state": e.state,
+            "zipcode": e.zipcode,
+            "skills": e.skills,
+            "preferences": e.preferences,
+            "availability": e.availability
+        })
+
+    return jsonify(result), 200
 
 @app.route("/api/test")
 def test():

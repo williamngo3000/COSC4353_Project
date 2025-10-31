@@ -1,20 +1,21 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
 from pydantic import BaseModel, field_validator, ValidationError
-from typing import List, Optional
-import re
-import json
+from typing import Optional, List
 import os
+import re
+
+from models import db, UserCredentials, Event  # ✅ Import db and models
 
 app = Flask(__name__)
 CORS(app)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///volunteer.db"  # creates Backend/volunteer.db
+
+# ✅ Configure database
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///volunteer.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
-
-
+# ✅ Attach db instance to app
+db.init_app(app)
 
 # --- Pydantic Models for Data Validation ---
 
@@ -117,27 +118,27 @@ DB = {
         "volunteer@example.com": {
             "password": "Password1", "role": "volunteer",
             "profile": {
-                "full_name": "John Doe", 
-                "address1": "123 Main St", 
+                "full_name": "John Doe",
+                "address1": "123 Main St",
                 "address2": "Apt 4B",
-                "city": "Houston", 
-                "state": "TX", 
+                "city": "Houston",
+                "state": "TX",
                 "zip_code": "77002",
                 "phone": "(555) 123-4567",
-                "skills": ["First Aid", "Logistics"], 
+                "skills": ["First Aid", "Logistics"],
                 "preferences": "I prefer morning events.",
                 "availability": ["2024-12-01", "2024-12-15"]
             },
             "history": [1]
         },
         "admin@example.com": {
-            "password": "AdminPassword1", 
+            "password": "AdminPassword1",
             "role": "admin",
             "profile": {
-                "full_name": "Jane Smith", 
-                "address1": "456 Admin Ave", 
+                "full_name": "Jane Smith",
+                "address1": "456 Admin Ave",
                 "city": "Houston",
-                "state": "TX", 
+                "state": "TX",
                 "zip_code": "77002",
                 "phone": "(555) 987-6543",
                 "skills": ["Team Leadership", "Public Speaking"], "preferences": "",
@@ -158,13 +159,13 @@ DB = {
             "status": "open"
         },
         2: {
-            "event_name": "Park Cleanup Day", 
+            "event_name": "Park Cleanup Day",
             "description": "Help us clean and beautify Memorial Park.",
-            "location": "Memorial Park", 
+            "location": "Memorial Park",
             "required_skills": ["Event Setup"],
-            "urgency": "Medium", 
-            "event_date": "2024-11-20", 
-            "volunteer_limit": None, 
+            "urgency": "Medium",
+            "event_date": "2024-11-20",
+            "volunteer_limit": None,
             "status": "open"
         }
     },
@@ -248,24 +249,32 @@ def check_all_events_status():
 @app.route('/register', methods=['POST'])
 def register_user():
     try:
-        user_data = UserRegistration(**request.json)
-        if user_data.email in DB["users"]:
+        data = request.get_json()
+        email = data.get("email")
+        password = data.get("email")
+
+                # Check if user already exists in the database
+        existing_user = UserCredentials.query.filter_by(email=email).first()
+        if existing_user:
             return jsonify({"message": "User with this email already exists"}), 409
 
-        DB["users"][user_data.email] = {
-            "password": user_data.password, "role": "volunteer",
-            "profile": {}, "history": []
-        }
+        # Create a new user and hash their password
+        new_user = UserCredentials(email=email)
+        new_user.set_password(password)
 
-        # Add notification and activity log
-        add_notification(f"New user registered: {user_data.email}", "info")
-        add_activity("registration", user=user_data.email)
+        db.session.add(new_user)
+        db.session.commit()
 
-        return jsonify({"message": "Registration successful", "user": {"email": user_data.email, "role": "volunteer"}}), 201
-    except ValidationError as e:
-        return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+        # Optionally add notifications / logs if you have those functions
+        add_notification(f"New user registered: {email}", "info")
+        add_activity("registration", user=email)
+
+        return jsonify({"message": "User registered successfully"}), 201
+
     except Exception as e:
-        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+        print("Registration error:", e)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/login', methods=['POST'])
 def login_user():
@@ -677,8 +686,9 @@ def get_user_invites(email):
 
 # --- Main Execution ---
 if __name__ == '__main__':
+
     with app.app_context():
         db.create_all()
-        print("Database initialized at:", os.path.abspath("voluunteer.db"))
-    app.run(debug=True, port=5002)
+        print("Database initialized at:", os.path.abspath("volunteer.db"))
 
+    app.run(debug=True, port=5001)
