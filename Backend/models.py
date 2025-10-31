@@ -3,10 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 
 db = SQLAlchemy()
-
-# -----------------------
 # User Credentials Model
-# -----------------------
 class UserCredentials(db.Model):
     __tablename__ = 'user_credentials'
     id = db.Column(db.Integer, primary_key=True)
@@ -21,9 +18,7 @@ class UserCredentials(db.Model):
         return check_password_hash(self.password_hash, password)
 
 
-# -----------------------
 # Event Details Model
-# -----------------------
 class EventDetails(db.Model):
     __tablename__ = 'event_details'
     id = db.Column(db.Integer, primary_key=True)
@@ -36,9 +31,7 @@ class EventDetails(db.Model):
     availability = db.Column(db.String(255))
 
 
-# -----------------------
 # User Profile Model
-# -----------------------
 class UserProfile(db.Model):
     __tablename__ = 'user_profile'
     id = db.Column(db.Integer, db.ForeignKey('user_credentials.id'), primary_key=True)
@@ -52,9 +45,7 @@ class UserProfile(db.Model):
     availability = db.Column(db.String(255))
 
 
-# -----------------------
 # Volunteer History Model
-# -----------------------
 class VolunteerHistory(db.Model):
     __tablename__ = 'volunteer_history'
     id = db.Column(db.Integer, primary_key=True)
@@ -63,9 +54,7 @@ class VolunteerHistory(db.Model):
     participation_date = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 
-# -----------------------
 # States Model
-# -----------------------
 class States(db.Model):
     __tablename__ = 'states'
     code = db.Column(db.String(10), primary_key=True)
