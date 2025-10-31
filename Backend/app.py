@@ -16,7 +16,7 @@ db = SQLAlchemy(app)
 
 
 
-# --- Pydantic Models for Data Validation ---
+#  Pydantic Models for Data Validation 
 
 class UserRegistration(BaseModel):
     email: str
@@ -107,11 +107,11 @@ class EventCreation(BaseModel):
             raise ValueError('Required skills cannot be empty')
         return value
 
-# --- Flask App Initialization ---
+#  Flask App Initialization 
 app = Flask(__name__)
 CORS(app)
 
-# --- In-Memory Database Simulation ---
+#  In-Memory Database Simulation 
 DB = {
     "users": {
         "volunteer@example.com": {
@@ -176,7 +176,7 @@ DB = {
     "invite_counter": 1
 }
 
-# --- Helper Functions ---
+# Helper Functions 
 from datetime import datetime
 
 def add_notification(message, type="info"):
@@ -243,7 +243,7 @@ def check_all_events_status():
     for event_id in DB["events"]:
         check_and_close_event(event_id)
 
-# --- API Endpoints ---
+# API Endpoints 
 
 @app.route('/register', methods=['POST'])
 def register_user():
@@ -506,7 +506,7 @@ def modify_user(email):
         del DB["users"][email]
         return jsonify({"message": "User deleted successfully"}), 200
 
-# --- Invite/Request Endpoints ---
+# Invite/Request Endpoints 
 
 @app.route('/invites', methods=['GET', 'POST'])
 def manage_invites():
