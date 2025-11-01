@@ -7,7 +7,6 @@ import os
 db = SQLAlchemy()
 
 # User Credentials Model
->>>>>>> 0ee795c1061434223df29761910917850501f532
 class UserCredentials(db.Model):
     __tablename__ = 'user_credentials'
 
