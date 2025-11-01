@@ -5,16 +5,16 @@ from typing import Optional, List
 import os
 import re
 
-from models import db, UserCredentials, Event  # ✅ Import db and models
+from models import db, UserCredentials, Event  # Import db and models
 
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Configure database
+# Configure database
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///volunteer.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# ✅ Attach db instance to app
+# Attach db instance to app
 db.init_app(app)
 
 #  Pydantic Models for Data Validation 
