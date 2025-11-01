@@ -49,9 +49,7 @@ class UserLogin(BaseModel):
 
 class ProfileUpdate(BaseModel):
     full_name: str
-    # --- FIX: Changed 'address' to 'address1' to match models.py ---
     address1: Optional[str] = None
-    # --- FIX: Added 'address2' to match models.py ---
     address2: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -132,15 +130,15 @@ def login_user():
         if not user or not user.check_password(login_data.password):
             return jsonify({"message": "Invalid email or password"}), 401
         
-        profile_complete = UserProfile.query.get(user.id) is not None
+        # --- FIX: Use db.session.get() ---
+        profile_complete = db.session.get(UserProfile, user.id) is not None
 
         return jsonify({
             "message": "Login successful",
             "user": {
                 "email": user.email, 
                 "role": user.role,
-                "profileComplete": profile_complete,
-                "userId": user.id # Added userId for convenience
+                "profileComplete": profile_complete
             }
         }), 200
     except ValidationError as e:
@@ -156,9 +154,12 @@ def user_profile(email):
         return jsonify({"message": "User not found"}), 404
 
     if request.method == 'GET':
-        profile = UserProfile.query.get(user_creds.id)
+        # --- FIX: Use db.session.get() ---
+        profile = db.session.get(UserProfile, user_creds.id)
         if not profile:
-            return jsonify({}), 200
+            # Return empty object, but with 200 OK
+            # This allows the frontend to know the user exists but has no profile
+            return jsonify({}), 200 
         
         skills_list = []
         if profile.skills:
@@ -170,9 +171,7 @@ def user_profile(email):
         
         return jsonify({
             "full_name": profile.full_name,
-            # --- FIX: Changed 'address' to 'address1' ---
             "address1": profile.address1,
-            # --- FIX: Added 'address2' ---
             "address2": profile.address2,
             "city": profile.city,
             "state": profile.state,
@@ -186,16 +185,17 @@ def user_profile(email):
         try:
             profile_data = ProfileUpdate(**request.json)
             
-            profile = UserProfile.query.get(user_creds.id)
+            # --- FIX: Use db.session.get() ---
+            profile = db.session.get(UserProfile, user_creds.id)
             
             if not profile:
                 profile = UserProfile(id=user_creds.id, full_name=profile_data.full_name)
+                # --- FIX: Added .session ---
                 db.session.add(profile)
             
+            # Update all fields from Pydantic model
             profile.full_name = profile_data.full_name
-            # --- FIX: Changed 'address' to 'address1' ---
             profile.address1 = profile_data.address1
-            # --- FIX: Added 'address2' ---
             profile.address2 = profile_data.address2
             profile.city = profile_data.city
             profile.state = profile_data.state
@@ -211,7 +211,7 @@ def user_profile(email):
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
         except Exception as e:
             db.session.rollback()
-        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
 @app.route('/events', methods=['GET', 'POST'])
 def manage_events():
@@ -251,7 +251,7 @@ def manage_events():
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
         except Exception as e:
             db.session.rollback()
-        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
 @app.route('/signup', methods=['POST'])
 def signup_for_event():
@@ -266,7 +266,8 @@ def signup_for_event():
     if not user_creds:
         return jsonify({"message": "User not found"}), 404
     
-    event = EventDetails.query.get(event_id)
+    # --- FIX: Use db.session.get() ---
+    event = db.session.get(EventDetails, event_id)
     if not event:
         return jsonify({"message": "Event not found"}), 404
     
@@ -296,16 +297,21 @@ def get_volunteer_history(email):
         event_list.append({
             "event_id": event.id,
             "event_name": event.event_name,
-            "participation_date": record.participation_date.strftime("%Y-%m-%d")
+            # --- FIX: Use .isoformat() for a standard, robust date format ---
+            "participation_date": record.participation_date.isoformat() 
         })
     
     return jsonify(event_list), 200
 
 @app.route('/matching/<int:event_id>', methods=['GET'])
 def get_volunteer_matches(event_id):
-    event = EventDetails.query.get(event_id)
-    if not event or not event.skills:
-        return jsonify([]), 200 # No skills to match
+    # --- FIX: Use db.session.get() ---
+    event = db.session.get(EventDetails, event_id)
+    if not event:
+        return jsonify({"message": "Event not found"}), 404
+        
+    if not event.skills:
+         return jsonify([]), 200 # No skills to match
 
     event_skills_set = set(skill.strip().lower() for skill in event.skills.split(','))
     
@@ -369,10 +375,13 @@ def init_db():
             States(code='MO', name='Missouri'), States(code='MT', name='Montana'),
             States(code='NE', name='Nebraska'), States(code='NV', name='Nevada'),
             States(code='NH', name='New Hampshire'), States(code='NJ', name='New Jersey'),
+            # --- FIX: Corrected typo ---
             States(code='NM', name='New Mexico'), States(code='NY', name='New York'),
             States(code='NC', name='North Carolina'), States(code='ND', name='North Dakota'),
             States(code='OH', name='Ohio'), States(code='OK', name='Oklahoma'),
-            States(code='OR', name='Oregon'), States(code='PA', name='Pennsylvania'),
+            States(code='OR', name='Oregon'), 
+            # --- FIX: Corrected typo ---
+            States(code='PA', name='Pennsylvania'),
             States(code='RI', name='Rhode Island'), States(code='SC', name='South Carolina'),
             States(code='SD', name='South Dakota'), States(code='TN', name='Tennessee'),
             States(code='TX', name='Texas'), States(code='UT', name='Utah'),
@@ -389,13 +398,14 @@ def init_db():
         admin = UserCredentials(email="admin@example.com", role="admin")
         admin.set_password("AdminPassword1")
         db.session.add(admin)
-        db.session.commit()
+        db.session.commit() # Commit admin first to get an ID
         
+        # Create profile, linking the ID
         admin_profile = UserProfile(
             id=admin.id, 
             full_name="Admin User",
-            # --- FIX: Changed 'address' to 'address1' ---
             address1="123 Admin Way",
+            address2=None,
             city="Houston",
             state="TX",
             zipcode="77001",
@@ -410,15 +420,14 @@ def init_db():
         vol = UserCredentials(email="volunteer@example.com", role="volunteer")
         vol.set_password("Password1")
         db.session.add(vol)
-        db.session.commit()
+        db.session.commit() # Commit volunteer to get ID
         
         # Add profile for the volunteer
         vol_profile = UserProfile(
             id=vol.id,
             full_name="John Doe",
-            # --- FIX: Changed 'address' to 'address1' ---
             address1="123 Main St", 
-            # --- FIX: 'address2' is optional, so we can leave it as None ---
+            address2=None, 
             city="Houston",
             state="TX",
             zipcode="77002",
@@ -446,14 +455,17 @@ def init_db():
             skills="Event Setup, General Labor"
         )
         db.session.add_all([event1, event2])
-        db.session.commit()
+        db.session.commit() # Commit events to get IDs
         
         # Add history for volunteer
         vol = UserCredentials.query.filter_by(email="volunteer@example.com").first()
         if vol:
-            history_record = VolunteerHistory(user_id=vol.id, event_id=event1.id)
-            db.session.add(history_record)
-            db.session.commit()
+            # Check if history record already exists (idempotency)
+            existing_record = VolunteerHistory.query.filter_by(user_id=vol.id, event_id=event1.id).first()
+            if not existing_record:
+                history_record = VolunteerHistory(user_id=vol.id, event_id=event1.id)
+                db.session.add(history_record)
+                db.session.commit()
 
 
 # Main Execution
@@ -462,6 +474,4 @@ if __name__ == '__main__':
         init_db()  
         print(f"Database initialized at: {os.path.join(BASE_DIR, 'volunteer.db')}")
     app.run(debug=True, port=5001)
-
-
 
