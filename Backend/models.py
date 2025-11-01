@@ -66,11 +66,7 @@ class EventDetails(db.Model):
     skills = db.Column(db.String(255))
     preferences = db.Column(db.String(255))
     availability = db.Column(db.String(255))
-
-    # Relationship to volunteer history
     volunteers = db.relationship('VolunteerHistory', back_populates='event')
-
-
 # ------------------------------------------------
 # VOLUNTEER HISTORY MODEL
 # ------------------------------------------------
@@ -80,7 +76,8 @@ class VolunteerHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_credentials.id'))
     event_id = db.Column(db.Integer, db.ForeignKey('event_details.id'))
-    participation_date = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    # --- FIX: Use timezone-aware datetime function ---
+    participation_date = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     # Relationships
     user = db.relationship('UserCredentials', back_populates='volunteer_history')
@@ -101,6 +98,8 @@ class States(db.Model):
 # DATABASE INITIALIZATION (for direct execution)
 # ------------------------------------------------
 if __name__ == "__main__":
+    # This block is for running `python models.py` directly,
+    # but the main initialization happens in `app.py`
     try:
         from app import app
         with app.app_context():
@@ -110,4 +109,6 @@ if __name__ == "__main__":
         print("Could not import 'app'. Run 'app.py' to create the database.")
     except Exception as e:
         print(f"An error occurred during DB initialization: {e}")
+
+
 
