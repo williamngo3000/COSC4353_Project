@@ -5,8 +5,7 @@ from typing import List, Optional
 import re
 import json
 
-# --- Pydantic Models for Data Validation ---
-
+#  Pydantic Models for Data Validation 
 class UserRegistration(BaseModel):
     email: str
     password: str
@@ -89,11 +88,11 @@ class EventCreation(BaseModel):
             raise ValueError('Required skills cannot be empty')
         return value
 
-# --- Flask App Initialization ---
+#  Flask App Initialization 
 app = Flask(__name__)
 CORS(app)
 
-# --- In-Memory Database Simulation ---
+#  In-Memory Database Simulation 
 DB = {
     "users": {
         "volunteer@example.com": {
@@ -133,7 +132,7 @@ DB = {
     "urgency_levels": ["Low", "Medium", "High", "Critical"]
 }
 
-# --- API Endpoints ---
+# API Endpoints 
 
 @app.route('/register', methods=['POST'])
 def register_user():

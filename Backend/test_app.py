@@ -26,7 +26,7 @@ class TestApp(unittest.TestCase):
         DB.clear()
         DB.update(self.original_db)
 
-    # --- Test Cases ---
+    # Test Cases 
 
     def test_register_user_success(self):
         response = self.app.post('/register', 
@@ -111,7 +111,7 @@ class TestApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(json.loads(response.data)), 1)
         
-    # --- New Tests to Improve Coverage ---
+    #  New Tests to Improve Coverage 
 
     def test_get_skills_endpoint(self):
         """Test the /data/skills endpoint."""
@@ -307,7 +307,7 @@ class TestApp(unittest.TestCase):
         check_all_events_status()
         self.assertEqual(DB["events"][996]["status"], "closed")
 
-    # --- Invite/Request Management Tests ---
+    # Invite/Request Management Tests 
 
     def test_create_user_request(self):
         """Test creating a user request to join an event"""

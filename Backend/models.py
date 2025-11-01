@@ -6,9 +6,8 @@ import os
 # Initialize SQLAlchemy (app binds it in app2.py)
 db = SQLAlchemy()
 
-# ------------------------------------------------
-# USER CREDENTIALS MODEL
-# ------------------------------------------------
+# User Credentials Model
+>>>>>>> 0ee795c1061434223df29761910917850501f532
 class UserCredentials(db.Model):
     __tablename__ = 'user_credentials'
 
@@ -30,9 +29,21 @@ class UserCredentials(db.Model):
         return check_password_hash(self.password_hash, password)
 
 
-# ------------------------------------------------
-# USER PROFILE MODEL
-# ------------------------------------------------
+=======
+# Event Details Model
+class EventDetails(db.Model):
+    __tablename__ = 'event_details'
+    id = db.Column(db.Integer, primary_key=True)
+    event_name = db.Column(db.String(255), nullable=False)
+    city = db.Column(db.String(100))
+    state = db.Column(db.String(50))
+    zipcode = db.Column(db.String(20))
+    skills = db.Column(db.String(255))
+    preferences = db.Column(db.String(255))
+    availability = db.Column(db.String(255))
+
+
+# User Profile Model
 class UserProfile(db.Model):
     __tablename__ = 'user_profile'
 
@@ -50,9 +61,7 @@ class UserProfile(db.Model):
     user = db.relationship('UserCredentials', back_populates='profile')
 
 
-# ------------------------------------------------
 # EVENT DETAILS MODEL
-# ------------------------------------------------
 class EventDetails(db.Model):
     __tablename__ = 'event_details'
 
@@ -69,9 +78,7 @@ class EventDetails(db.Model):
     volunteers = db.relationship('VolunteerHistory', back_populates='event')
 
 
-# ------------------------------------------------
-# VOLUNTEER HISTORY MODEL
-# ------------------------------------------------
+# Volunteer History Model
 class VolunteerHistory(db.Model):
     __tablename__ = 'volunteer_history'
 
@@ -85,19 +92,13 @@ class VolunteerHistory(db.Model):
     event = db.relationship('EventDetails', back_populates='volunteers')
 
 
-# ------------------------------------------------
 # STATES MODEL
-# ------------------------------------------------
-class States(db.Model):
     __tablename__ = 'states'
 
     code = db.Column(db.String(10), primary_key=True)
     name = db.Column(db.String(100))
 
 
-# ------------------------------------------------
-# DATABASE INITIALIZATION (for direct execution)
-# ------------------------------------------------
 if __name__ == "__main__":
     from app2 import app
     with app.app_context():

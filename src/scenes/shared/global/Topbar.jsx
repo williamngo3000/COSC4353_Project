@@ -97,6 +97,9 @@ const Topbar = ({ onLogout }) => {
         localStorage.removeItem('userRole');
         sessionStorage.clear();
 
+        //Reset to light mode on logout
+        if(theme.palette.mode === 'dark'){ colorMode.toggleColorMode();}
+
         // Call the onLogout prop if provided
         if (onLogout) {
             onLogout();
