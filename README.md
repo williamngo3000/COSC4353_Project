@@ -30,8 +30,7 @@ Login:
         Password1
 
 To run unit tests:
-1) pytest (auto discover/run unit tests)
-
+1) pytest (auto discover/run unit tests
 Code coverage report:
 - Quick Summary:
     pytest --cov=app
@@ -53,3 +52,5 @@ The software must include the following components:
     -    Volunteer Matching (A module that matches volunteers to events/tasks based on their profiles and the event requirements)
     -    Notification System (Send notifications to volunteers for event assignments, updates, and reminders)
     -    Volunteer History (Track volunteer participation history and performance)
+
+2) coverage run -m unittest 
