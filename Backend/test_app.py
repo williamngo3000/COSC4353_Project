@@ -26,10 +26,10 @@ class TestApp(unittest.TestCase):
         DB.clear()
         DB.update(self.original_db)
 
-    # Test Cases 
+    # -Test Cases 
 
     def test_register_user_success(self):
-        response = self.app.post('/register', 
+        response = self.app.post('/register',
                                  data=json.dumps({"email": "newuser@example.com", "password": "NewPassword1"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 201)
@@ -95,7 +95,7 @@ class TestApp(unittest.TestCase):
                                  data=json.dumps(event_data),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 201)
-        
+
     def test_get_volunteer_matches_success(self):
         response = self.app.get('/matching/1')
         self.assertEqual(response.status_code, 200)
@@ -110,7 +110,7 @@ class TestApp(unittest.TestCase):
         response = self.app.get('/history/volunteer@example.com')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(json.loads(response.data)), 1)
-        
+
     #  New Tests to Improve Coverage 
 
     def test_get_skills_endpoint(self):
@@ -134,7 +134,7 @@ class TestApp(unittest.TestCase):
         """Test getting history for a non-existent user."""
         response = self.app.get('/history/nouser@example.com')
         self.assertEqual(response.status_code, 404)
-        
+
     @patch('app.DB', new_callable=lambda: {}) # Mock the DB to force an error
     def test_internal_server_error_on_register(self, mock_db):
         """Test the generic exception handler for the register endpoint."""
@@ -143,7 +143,7 @@ class TestApp(unittest.TestCase):
                                  content_type='application/json')
         self.assertEqual(response.status_code, 500)
 
-    # --- Business Logic Function Tests ---
+    #  Business Logic Function Tests 
 
     def test_add_notification(self):
         """Test adding notifications to the database"""
@@ -307,7 +307,7 @@ class TestApp(unittest.TestCase):
         check_all_events_status()
         self.assertEqual(DB["events"][996]["status"], "closed")
 
-    # Invite/Request Management Tests 
+    #  Invite/Request Management Tests 
 
     def test_create_user_request(self):
         """Test creating a user request to join an event"""
@@ -661,7 +661,7 @@ class TestApp(unittest.TestCase):
                                 content_type='application/json')
         self.assertEqual(response.status_code, 400)
 
-    # --- User Management Tests ---
+    #  User Management Tests 
 
     def test_get_all_users(self):
         """Test getting all users"""
@@ -725,7 +725,7 @@ class TestApp(unittest.TestCase):
         response = self.app.get('/user/nouser@example.com/events')
         self.assertEqual(response.status_code, 404)
 
-    # --- Notification Tests ---
+    # -Notification Tests 
 
     def test_get_notifications(self):
         """Test getting all notifications"""
@@ -750,7 +750,7 @@ class TestApp(unittest.TestCase):
         response = self.app.put('/notifications/99999/read')
         self.assertEqual(response.status_code, 404)
 
-    # --- Activity Log Tests ---
+    #  Activity Log Tests 
 
     def test_get_activity(self):
         """Test getting activity log"""
@@ -883,4 +883,3 @@ class TestApp(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
