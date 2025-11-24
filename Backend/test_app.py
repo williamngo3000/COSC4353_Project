@@ -2,884 +2,510 @@ import unittest
 import json
 import sys
 import os
-import copy
+from datetime import datetime
 from unittest.mock import patch
-from datetime import datetime, timedelta
 
 # Add the project's root directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, DB, add_notification, add_activity, get_event_volunteer_count, check_and_close_event, check_all_events_status
+# Import the app, db, and all the models from your actual project files
+try:
+    from app import app, db, init_db
+    from models import UserCredentials, UserProfile, EventDetails, VolunteerHistory, States
+except ImportError as e:
+    print(f"Error importing app or models: {e}")
+    print("Please make sure test_app.py is in the same directory as app.py and models.py")
+    sys.exit(1)
 
-class TestApp(unittest.TestCase):
+class TestVolunteerApp(unittest.TestCase):
     def setUp(self):
-        # Create a test client
+        """Set up a temporary, in-memory database for each test."""
+        app.config['TESTING'] = True
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # Use in-memory db
         self.app = app.test_client()
-        # Propagate the exceptions to the test client
-        self.app.testing = True
-        # Use copy.deepcopy to preserve integer keys and avoid test pollution.
-        self.original_db = copy.deepcopy(DB)
+
+        # Set up the database and populate it with seed data
+        with app.app_context():
+            db.create_all()
+            init_db() # Run your seeder function from app.py
 
     def tearDown(self):
-        # Restore the original DB state by modifying the dictionary in-place.
-        global DB
-        DB.clear()
-        DB.update(self.original_db)
+        """Clean up the database after each test."""
+        with app.app_context():
+            db.session.remove()
+            db.drop_all()
 
-    # -Test Cases 
+    # --- Test Cases for UserCredentials ---
 
     def test_register_user_success(self):
-        response = self.app.post('/register',
+        """Test successful user registration."""
+        response = self.app.post('/register', 
                                  data=json.dumps({"email": "newuser@example.com", "password": "NewPassword1"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 201)
         data = json.loads(response.data)
         self.assertEqual(data['message'], 'Registration successful')
+        
+        # Verify in DB
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="newuser@example.com").first()
+            self.assertIsNotNone(user)
+            self.assertEqual(user.role, "volunteer")
 
     def test_register_user_already_exists(self):
+        """Test registration with an email that already exists."""
+        # This user was created by init_db()
         response = self.app.post('/register',
                                  data=json.dumps({"email": "volunteer@example.com", "password": "Password1"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 409)
+        self.assertIn("already exists", str(response.data))
 
     def test_register_user_invalid_password(self):
+        """Test registration with a password that's too short."""
         response = self.app.post('/register',
                                  data=json.dumps({"email": "test@test.com", "password": "short"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 400)
+        self.assertIn("Password must be at least 8 characters", str(response.data))
+
+    def test_register_user_invalid_email_400(self):
+        """Test registration with a bad email to trigger a 400 Validation Error."""
+        response = self.app.post('/register',
+                                 data=json.dumps({"email": "bad-email", "password": "NewPassword1"}),
+                                 content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertEqual(data['message'], 'Validation error')
+        self.assertIn('Email is not valid', str(data['errors'])) 
+
+    def test_register_user_general_exception_500(self):
+        """Test the general exception handler for 500 error."""
+        # Use patch to simulate a database commit failure
+        with patch('app.db.session.commit') as mock_commit:
+            mock_commit.side_effect = Exception("Simulated DB Error")
+            
+            response = self.app.post('/register', 
+                                     data=json.dumps({"email": "exception@example.com", "password": "NewPassword1"}),
+                                     content_type='application/json')
+            
+            self.assertEqual(response.status_code, 500)
+            data = json.loads(response.data)
+            self.assertEqual(data['message'], 'An internal error occurred')
+            self.assertIn("Simulated DB Error", data['error'])
 
     def test_login_user_success(self):
+        """Test successful login for admin."""
+        # This user was created by init_db()
         response = self.app.post('/login',
                                  data=json.dumps({"email": "admin@example.com", "password": "AdminPassword1"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertTrue(data['user']['profileComplete']) # Admin profile is complete
+        self.assertEqual(data['user']['role'], 'admin')
 
     def test_login_user_invalid_credentials(self):
+        """Test login with an incorrect password."""
         response = self.app.post('/login',
                                  data=json.dumps({"email": "volunteer@example.com", "password": "WrongPassword"}),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 401)
+        self.assertIn("Invalid email or password", str(response.data))
+
+    def test_login_user_validation_error(self):
+        """Test login with missing/invalid data."""
+        response = self.app.post('/login',
+                                 data=json.dumps({"email": "volunteer@example.com"}), # Missing password
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Validation error", str(response.data))
+
+    # --- Test Cases for UserProfile ---
 
     def test_get_profile_success(self):
+        """Test fetching an existing user profile."""
         response = self.app.get('/profile/volunteer@example.com')
         self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['full_name'], 'John Doe')
+        self.assertEqual(data['address1'], '123 Main St')
+        self.assertIn('First Aid', data['skills'])
+
+    def test_get_profile_with_null_skills_and_availability(self):
+        """Test GET profile for a user with None for skills/availability."""
+        # 1. Create a user and profile with null skills/availability
+        with app.app_context():
+            user = UserCredentials(email="nulluser@example.com")
+            user.set_password("Password123")
+            db.session.add(user)
+            db.session.commit()
+            
+            profile = UserProfile(
+                id=user.id,
+                full_name="Null User",
+                address1="123 Null St",
+                city="Nullville",
+                state="TX",
+                zipcode="00000",
+                skills=None,
+                availability=None
+            )
+            db.session.add(profile)
+            db.session.commit()
+            
+        # 2. Request their profile
+        response = self.app.get('/profile/nulluser@example.com')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['full_name'], 'Null User')
+        self.assertEqual(data['skills'], []) # Should be an empty list
+        self.assertEqual(data['availability'], []) # Should be an empty list
 
     def test_get_profile_not_found(self):
+        """Test fetching a profile for a user that doesn't exist."""
         response = self.app.get('/profile/nouser@example.com')
         self.assertEqual(response.status_code, 404)
+        self.assertIn("User not found", str(response.data))
+
+    def test_get_profile_no_profile_exists(self):
+        """Test fetching a profile for a user who exists but has no profile."""
+        # 1. Create a user with no profile
+        with app.app_context():
+            new_user = UserCredentials(email="noprofile@example.com")
+            new_user.set_password("Password123")
+            db.session.add(new_user)
+            db.session.commit()
+        
+        # 2. Request their profile
+        response = self.app.get('/profile/noprofile@example.com')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data, {}) # Should return an empty object
 
     def test_update_profile_success(self):
+        """Test successfully updating a user profile."""
         profile_data = {
-            "full_name": "John D. Updated", "address1": "123 New St", "city": "Austin",
-            "state": "TX", "zip_code": "78701", "skills": ["New Skill"],
-            "availability": ["2025-01-01"]
+            "full_name": "John D. Updated",
+            "address1": "123 New St",
+            "address2": "Apt 1",
+            "city": "Austin",
+            "state": "TX",
+            "zip_code": "78701",
+            "skills": ["Marketing", "Photography"],
+            "availability": ["2026-01-01", "2026-02-02"],
+            "preferences": "Weekends"
         }
         response = self.app.put('/profile/volunteer@example.com',
                                 data=json.dumps(profile_data),
                                 content_type='application/json')
         self.assertEqual(response.status_code, 200)
+        
+        # Verify in DB
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="volunteer@example.com").first()
+            self.assertEqual(user.profile.full_name, "John D. Updated")
+            self.assertEqual(user.profile.city, "Austin")
+            self.assertEqual(user.profile.address2, "Apt 1")
+            self.assertIn("Marketing", user.profile.skills)
+            self.assertNotIn("First Aid", user.profile.skills) # Old skill should be gone
+
+    def test_update_profile_with_null_zip(self):
+        """Test updating a profile with a null/empty zip code."""
+        profile_data = {
+            "full_name": "John D. Updated",
+            "address1": "123 New St",
+            "city": "Austin",
+            "state": "TX",
+            "zip_code": None, # Test the None case
+            "skills": ["Marketing"]
+        }
+        response = self.app.put('/profile/volunteer@example.com',
+                                data=json.dumps(profile_data),
+                                content_type='application/json')
+        self.assertEqual(response.status_code, 200) # Should be successful
+
+        # Verify in DB
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="volunteer@example.com").first()
+            self.assertIsNone(user.profile.zipcode) # Zipcode should be None
+
+        # Test the empty string case
+        profile_data["zip_code"] = ""
+        response = self.app.put('/profile/volunteer@example.com',
+                                data=json.dumps(profile_data),
+                                content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="volunteer@example.com").first()
+            self.assertEqual(user.profile.zipcode, "") # Zipcode should be ""
+
+    def test_update_profile_creates_new_profile(self):
+        """Test that PUT creates a profile if one doesn't exist."""
+        # 1. Create a user with no profile
+        with app.app_context():
+            new_user = UserCredentials(email="newprofile@example.com")
+            new_user.set_password("Password123")
+            db.session.add(new_user)
+            db.session.commit()
+        
+        # 2. Send PUT data to create their profile
+        profile_data = {
+            "full_name": "New User",
+            "address1": "456 First St",
+            "city": "Dallas",
+            "state": "TX",
+            "zip_code": "75201",
+            "skills": ["Tech Support"],
+        }
+        response = self.app.put('/profile/newprofile@example.com',
+                                data=json.dumps(profile_data),
+                                content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+
+        # 3. Verify in DB
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="newprofile@example.com").first()
+            self.assertIsNotNone(user.profile)
+            self.assertEqual(user.profile.full_name, "New User")
+            self.assertEqual(user.profile.city, "Dallas")
+
+    def test_update_profile_invalid_zipcode_400(self):
+        """Test profile update with a bad zip code for a 400 error."""
+        profile_data = {
+            "full_name": "John D. Updated",
+            "address1": "123 New St",
+            "city": "Austin",
+            "state": "TX",
+            "zip_code": "bad-zip", # <-- Invalid zip
+            "skills": ["Marketing"],
+            "availability": ["2026-01-01"]
+        }
+        response = self.app.put('/profile/volunteer@example.com',
+                                data=json.dumps(profile_data),
+                                content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertIn('zip_code', str(data['errors']))
+
+    # --- Test Cases for EventDetails ---
 
     def test_get_events_success(self):
+        """Test fetching all events."""
         response = self.app.get('/events')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
-        self.assertEqual(len(data), 2)
+        self.assertEqual(len(data), 2) # From init_db()
+        self.assertEqual(data[0]['event_name'], "Community Food Drive")
+
+    def test_get_events_no_events(self):
+        """Test fetching events when none exist."""
+        # Clear the tables
+        with app.app_context():
+            db.session.query(VolunteerHistory).delete()
+            db.session.query(EventDetails).delete()
+            db.session.commit()
+        
+        response = self.app.get('/events')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data, []) # Should return an empty list
 
     def test_create_event_success(self):
+        """Test successfully creating a new event."""
         event_data = {
-            "event_name": "New Charity Gala", "description": "A fancy event.",
-            "location": "The Grand Hall", "required_skills": ["Catering", "Marketing"],
-            "urgency": "High", "event_date": "2025-05-10"
+            "event_name": "New Charity Gala",
+            "city": "New York",
+            "state": "NY",
+            "zipcode": "10001",
+            "skills": "Catering, Marketing",
+            "preferences": "Evening",
+            "availability": "2026-10-10"
         }
         response = self.app.post('/events',
                                  data=json.dumps(event_data),
                                  content_type='application/json')
         self.assertEqual(response.status_code, 201)
+        
+        # Verify in DB
+        with app.app_context():
+            event = EventDetails.query.filter_by(event_name="New Charity Gala").first()
+            self.assertIsNotNone(event)
+            self.assertEqual(event.city, "New York")
+            self.assertEqual(event.skills, "Catering, Marketing")
+
+    def test_create_event_validation_error(self):
+        """Test creating an event with missing data."""
+        event_data = { "city": "New York" } # Missing event_name
+        response = self.app.post('/events',
+                                 data=json.dumps(event_data),
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Validation error", str(response.data))
+
+    # --- Test Cases for VolunteerHistory & Matching ---
+
+    def test_signup_for_event_success(self):
+        """Test successfully signing up for an event."""
+        response = self.app.post('/signup',
+                                 data=json.dumps({"email": "volunteer@example.com", "event_id": 2}),
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("Successfully signed up", str(response.data))
+
+        # Verify in DB
+        with app.app_context():
+            user = UserCredentials.query.filter_by(email="volunteer@example.com").first()
+            history = VolunteerHistory.query.filter_by(user_id=user.id, event_id=2).first()
+            self.assertIsNotNone(history)
+
+    def test_signup_for_event_already_signed_up(self):
+        """Test signing up for an event the user is already registered for."""
+        # volunteer@example.com is signed up for event 1 by init_db()
+        response = self.app.post('/signup',
+                                 data=json.dumps({"email": "volunteer@example.com", "event_id": 1}),
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Already signed up", str(response.data))
+
+    def test_signup_for_event_user_not_found(self):
+        """Test signing up with a non-existent user."""
+        response = self.app.post('/signup',
+                                 data=json.dumps({"email": "nouser@example.com", "event_id": 1}),
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("User not found", str(response.data))
+
+    def test_signup_for_event_event_not_found(self):
+        """Test signing up for a non-existent event."""
+        response = self.app.post('/signup',
+                                 data=json.dumps({"email": "volunteer@example.com", "event_id": 999}),
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Event not found", str(response.data))
+
+    def test_signup_for_event_missing_data(self):
+        """Test signing up with missing data."""
+        response = self.app.post('/signup',
+                                 data=json.dumps({"event_id": 1}), # Missing email
+                                 content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Email and Event ID are required", str(response.data))
+
+    def test_get_volunteer_history_success(self):
+        """Test fetching a user's volunteer history."""
+        # init_db adds Event 1 to the volunteer's history
+        response = self.app.get('/history/volunteer@example.com')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['event_name'], 'Community Food Drive')
+
+    def test_get_volunteer_history_no_history(self):
+        """Test fetching history for a user with no history."""
+        # admin@example.com was created but has no history
+        response = self.app.get('/history/admin@example.com')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data, []) # Should return an empty list
+
+    def test_get_volunteer_history_user_not_found_404(self):
+        """Test history for a non-existent user."""
+        response = self.app.get('/history/nouser@example.com')
+        self.assertEqual(response.status_code, 404)
 
     def test_get_volunteer_matches_success(self):
+        """Test the matching algorithm for a skill match."""
+        # Event 1 ("Community Food Drive") needs "Logistics, Event Setup"
+        # "volunteer@example.com" has "First Aid, Logistics"
+        # This should be a match on "Logistics".
         response = self.app.get('/matching/1')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(json.loads(response.data)), 1)
+        data = json.loads(response.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['email'], 'volunteer@example.com')
 
     def test_get_volunteer_matches_no_match(self):
+        """Test the matching algorithm for no skill match."""
+        # Event 2 ("Park Cleanup Day") needs "Event Setup, General Labor"
+        # "volunteer@example.com" has "First Aid, Logistics"
+        # This should be no match.
         response = self.app.get('/matching/2')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(json.loads(response.data)), 0)
 
-    def test_get_volunteer_history_success(self):
-        response = self.app.get('/history/volunteer@example.com')
+    def test_get_volunteer_matches_with_skill_less_volunteer(self):
+        """Test that a volunteer with no skills is skipped."""
+        # 1. Create a user and profile with no skills
+        with app.app_context():
+            user = UserCredentials(email="noskill@example.com", role="volunteer")
+            user.set_password("Password123")
+            db.session.add(user)
+            db.session.commit()
+            
+            profile = UserProfile(
+                id=user.id,
+                full_name="No Skill User",
+                address1="123 NoSkill St",
+                city="Anywhere",
+                state="TX",
+                zipcode="00000",
+                skills=None # Explicitly None
+            )
+            db.session.add(profile)
+            db.session.commit()
+            
+        # 2. Request matches for Event 1, which "volunteer@example.com" matches.
+        # This new "noskill@example.com" user should be skipped over.
+        response = self.app.get('/matching/1')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(json.loads(response.data)), 1)
+        data = json.loads(response.data)
+        self.assertEqual(len(data), 1) # Should only be the one match
+        self.assertEqual(data[0]['email'], 'volunteer@example.com') # Should not be 'noskill@example.com'
 
-    #  New Tests to Improve Coverage 
+
+    def test_get_volunteer_matches_event_not_found_404(self):
+        """Test matching for a non-existent event."""
+        response = self.app.get('/matching/999')
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_volunteer_matches_event_has_no_skills(self):
+        """Test matching for an event that has no skills listed."""
+        # 1. Create a new event with no skills
+        with app.app_context():
+            no_skill_event = EventDetails(event_name="No Skills Needed Event")
+            db.session.add(no_skill_event)
+            db.session.commit()
+            event_id = no_skill_event.id
+        
+        # 2. Request matches for it
+        response = self.app.get(f'/matching/{event_id}')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data, []) # Should return an empty list
+
+    # --- Test Cases for Static Data Endpoints ---
 
     def test_get_skills_endpoint(self):
         """Test the /data/skills endpoint."""
         response = self.app.get('/data/skills')
         self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(json.loads(response.data), list)
-
-    def test_get_urgency_levels_endpoint(self):
-        """Test the /data/urgency endpoint."""
-        response = self.app.get('/data/urgency')
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(json.loads(response.data), list)
-
-    def test_match_volunteers_event_not_found(self):
-        """Test volunteer matching for a non-existent event."""
-        response = self.app.get('/matching/999')
-        self.assertEqual(response.status_code, 404)
-
-    def test_get_history_user_not_found(self):
-        """Test getting history for a non-existent user."""
-        response = self.app.get('/history/nouser@example.com')
-        self.assertEqual(response.status_code, 404)
-
-    @patch('app.DB', new_callable=lambda: {}) # Mock the DB to force an error
-    def test_internal_server_error_on_register(self, mock_db):
-        """Test the generic exception handler for the register endpoint."""
-        response = self.app.post('/register',
-                                 data=json.dumps({"email": "error@example.com", "password": "ErrorPassword1"}),
-                                 content_type='application/json')
-        self.assertEqual(response.status_code, 500)
-
-    #  Business Logic Function Tests 
-
-    def test_add_notification(self):
-        """Test adding notifications to the database"""
-        initial_count = len(DB["notifications"])
-        notification = add_notification("Test notification", "info")
-
-        self.assertIsNotNone(notification)
-        self.assertEqual(notification["message"], "Test notification")
-        self.assertEqual(notification["type"], "info")
-        self.assertFalse(notification["read"])
-        self.assertEqual(len(DB["notifications"]), initial_count + 1)
-
-    def test_notification_limit(self):
-        """Test that notifications are limited to 50"""
-        # Clear notifications
-        DB["notifications"].clear()
-
-        # Add 60 notifications
-        for i in range(60):
-            add_notification(f"Notification {i}", "info")
-
-        # Should only have 50
-        self.assertEqual(len(DB["notifications"]), 50)
-        # The first notification should be the most recent
-        self.assertEqual(DB["notifications"][0]["message"], "Notification 59")
-
-    def test_add_activity(self):
-        """Test adding activity to the activity log"""
-        initial_count = len(DB["activity_log"])
-        activity = add_activity("test_activity", user="test@example.com", details="Test details")
-
-        self.assertIsNotNone(activity)
-        self.assertEqual(activity["type"], "test_activity")
-        self.assertEqual(activity["user"], "test@example.com")
-        self.assertEqual(activity["details"], "Test details")
-        self.assertEqual(len(DB["activity_log"]), initial_count + 1)
-
-    def test_activity_limit(self):
-        """Test that activity log is limited to 50"""
-        # Clear activity log
-        DB["activity_log"].clear()
-
-        # Add 60 activities
-        for i in range(60):
-            add_activity("test_activity", count=i)
-
-        # Should only have 50
-        self.assertEqual(len(DB["activity_log"]), 50)
-
-    def test_get_event_volunteer_count_zero(self):
-        """Test getting volunteer count when no volunteers"""
-        count = get_event_volunteer_count(999)
-        self.assertEqual(count, 0)
-
-    def test_get_event_volunteer_count_with_volunteers(self):
-        """Test getting volunteer count with accepted invites"""
-        # Add test invites
-        DB["invites"].append({
-            "id": 1,
-            "event_id": 1,
-            "user_email": "test1@example.com",
-            "status": "accepted",
-            "type": "admin_invite",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        DB["invites"].append({
-            "id": 2,
-            "event_id": 1,
-            "user_email": "test2@example.com",
-            "status": "pending",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        DB["invites"].append({
-            "id": 3,
-            "event_id": 1,
-            "user_email": "test3@example.com",
-            "status": "accepted",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        # Should only count accepted invites
-        count = get_event_volunteer_count(1)
-        self.assertEqual(count, 2)
-
-    def test_check_and_close_event_date_passed(self):
-        """Test event closure when date has passed"""
-        past_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
-        DB["events"][999] = {
-            "event_name": "Past Event",
-            "event_date": past_date,
-            "status": "open",
-            "volunteer_limit": None
-        }
-
-        result = check_and_close_event(999)
-        self.assertTrue(result)
-        self.assertEqual(DB["events"][999]["status"], "closed")
-
-    def test_check_and_close_event_volunteer_limit_reached(self):
-        """Test event closure when volunteer limit is reached"""
-        future_date = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
-        DB["events"][998] = {
-            "event_name": "Limited Event",
-            "event_date": future_date,
-            "status": "open",
-            "volunteer_limit": 2
-        }
-
-        # Add 2 accepted volunteers
-        DB["invites"].append({
-            "id": 10,
-            "event_id": 998,
-            "user_email": "vol1@example.com",
-            "status": "accepted",
-            "type": "admin_invite",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        DB["invites"].append({
-            "id": 11,
-            "event_id": 998,
-            "user_email": "vol2@example.com",
-            "status": "accepted",
-            "type": "admin_invite",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        result = check_and_close_event(998)
-        self.assertTrue(result)
-        self.assertEqual(DB["events"][998]["status"], "closed")
-
-    def test_check_and_close_event_already_closed(self):
-        """Test that already closed events stay closed"""
-        DB["events"][997] = {
-            "event_name": "Closed Event",
-            "event_date": "2024-12-01",
-            "status": "closed",
-            "volunteer_limit": None
-        }
-
-        result = check_and_close_event(997)
-        self.assertFalse(result)
-        self.assertEqual(DB["events"][997]["status"], "closed")
-
-    def test_check_and_close_event_not_found(self):
-        """Test handling of non-existent event"""
-        result = check_and_close_event(99999)
-        self.assertFalse(result)
-
-    def test_check_all_events_status(self):
-        """Test checking all events status"""
-        past_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        DB["events"][996] = {
-            "event_name": "Should Close",
-            "event_date": past_date,
-            "status": "open",
-            "volunteer_limit": None
-        }
-
-        check_all_events_status()
-        self.assertEqual(DB["events"][996]["status"], "closed")
-
-    #  Invite/Request Management Tests 
-
-    def test_create_user_request(self):
-        """Test creating a user request to join an event"""
-        # Create a future event
-        future_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-        DB["events"][990] = {
-            "event_name": "Future Event",
-            "description": "Test event",
-            "location": "Test Location",
-            "required_skills": ["Test"],
-            "urgency": "Medium",
-            "event_date": future_date,
-            "volunteer_limit": None,
-            "status": "open"
-        }
-
-        request_data = {
-            "event_id": 990,
-            "user_email": "newvolunteer@example.com",
-            "type": "user_request"
-        }
-        response = self.app.post('/invites',
-                                data=json.dumps(request_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 201)
         data = json.loads(response.data)
-        self.assertEqual(data["invite"]["status"], "pending")
+        self.assertIsInstance(data, list)
+        self.assertIn("Tech Support", data)
+        self.assertIn("First Aid", data)
 
-    def test_create_admin_invite(self):
-        """Test admin inviting a volunteer to an event"""
-        # Create a future event
-        future_date = (datetime.now() + timedelta(days=45)).strftime("%Y-%m-%d")
-        DB["events"][991] = {
-            "event_name": "Future Event 2",
-            "description": "Test event",
-            "location": "Test Location",
-            "required_skills": ["Test"],
-            "urgency": "High",
-            "event_date": future_date,
-            "volunteer_limit": None,
-            "status": "open"
-        }
-
-        invite_data = {
-            "event_id": 991,
-            "user_email": "volunteer@example.com",
-            "type": "admin_invite"
-        }
-        response = self.app.post('/invites',
-                                data=json.dumps(invite_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 201)
-
-    def test_create_invite_event_not_found(self):
-        """Test creating invite for non-existent event"""
-        invite_data = {
-            "event_id": 99999,
-            "user_email": "volunteer@example.com",
-            "type": "admin_invite"
-        }
-        response = self.app.post('/invites',
-                                data=json.dumps(invite_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 404)
-
-    def test_create_invite_closed_event(self):
-        """Test creating invite for a closed event"""
-        # Create a closed event
-        past_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        DB["events"][995] = {
-            "event_name": "Closed Event",
-            "event_date": past_date,
-            "status": "open",
-            "volunteer_limit": None
-        }
-
-        invite_data = {
-            "event_id": 995,
-            "user_email": "volunteer@example.com",
-            "type": "user_request"
-        }
-        response = self.app.post('/invites',
-                                data=json.dumps(invite_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 403)
-
-    def test_duplicate_pending_invite(self):
-        """Test that duplicate pending invites are prevented"""
-        # Create a future event
-        future_date = (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%d")
-        DB["events"][992] = {
-            "event_name": "Duplicate Test Event",
-            "description": "Test event",
-            "location": "Test Location",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": future_date,
-            "volunteer_limit": None,
-            "status": "open"
-        }
-
-        invite_data = {
-            "event_id": 992,
-            "user_email": "duplicate@example.com",
-            "type": "user_request"
-        }
-
-        # Create first invite
-        response1 = self.app.post('/invites',
-                                 data=json.dumps(invite_data),
-                                 content_type='application/json')
-        self.assertEqual(response1.status_code, 201)
-
-        # Try to create duplicate
-        response2 = self.app.post('/invites',
-                                 data=json.dumps(invite_data),
-                                 content_type='application/json')
-        self.assertEqual(response2.status_code, 409)
-
-    def test_get_invites(self):
-        """Test getting all invites"""
-        response = self.app.get('/invites')
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(json.loads(response.data), list)
-
-    def test_get_invites_filtered_by_status(self):
-        """Test filtering invites by status"""
-        # Add test invites
-        DB["invites"].append({
-            "id": 100,
-            "event_id": 1,
-            "user_email": "test@example.com",
-            "status": "pending",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        response = self.app.get('/invites?status=pending')
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        for invite in data:
-            self.assertEqual(invite["status"], "pending")
-
-    def test_update_invite_status(self):
-        """Test updating an invite status"""
-        # Create an invite first
-        DB["invites"].append({
-            "id": 200,
-            "event_id": 1,
-            "user_email": "update@example.com",
-            "status": "pending",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        response = self.app.put('/invites/200',
-                               data=json.dumps({"status": "accepted"}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify status was updated
-        invite = next((inv for inv in DB["invites"] if inv["id"] == 200), None)
-        self.assertEqual(invite["status"], "accepted")
-
-    def test_update_invite_not_found(self):
-        """Test updating non-existent invite"""
-        response = self.app.put('/invites/99999',
-                               data=json.dumps({"status": "accepted"}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 404)
-
-    def test_delete_invite(self):
-        """Test deleting an invite"""
-        # Create an invite first
-        DB["invites"].append({
-            "id": 300,
-            "event_id": 1,
-            "user_email": "delete@example.com",
-            "status": "pending",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        response = self.app.delete('/invites/300')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify invite was deleted
-        invite = next((inv for inv in DB["invites"] if inv["id"] == 300), None)
-        self.assertIsNone(invite)
-
-    def test_mark_invite_complete(self):
-        """Test marking an invite as completed"""
-        # Create user and accepted invite
-        DB["users"]["complete@example.com"] = {
-            "password": "Password1",
-            "role": "volunteer",
-            "profile": {},
-            "history": []
-        }
-
-        DB["invites"].append({
-            "id": 400,
-            "event_id": 1,
-            "user_email": "complete@example.com",
-            "status": "accepted",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        response = self.app.put('/invites/400/complete',
-                               data=json.dumps({"completed": True}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify event was added to history
-        self.assertIn(1, DB["users"]["complete@example.com"]["history"])
-
-    def test_unmark_invite_complete(self):
-        """Test unmarking an invite as completed"""
-        # Create user with history
-        DB["users"]["uncomplete@example.com"] = {
-            "password": "Password1",
-            "role": "volunteer",
-            "profile": {},
-            "history": [1]
-        }
-
-        DB["invites"].append({
-            "id": 500,
-            "event_id": 1,
-            "user_email": "uncomplete@example.com",
-            "status": "accepted",
-            "type": "user_request",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "completed": True
-        })
-
-        response = self.app.put('/invites/500/complete',
-                               data=json.dumps({"completed": False}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify event was removed from history
-        self.assertNotIn(1, DB["users"]["uncomplete@example.com"]["history"])
-
-    def test_get_user_invites(self):
-        """Test getting invites for a specific user"""
-        response = self.app.get('/invites/user/volunteer@example.com')
+    def test_get_states_endpoint(self):
+        """Test the /data/states endpoint."""
+        response = self.app.get('/data/states')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertIsInstance(data, list)
-
-    # --- Event Management Tests ---
-
-    def test_update_event(self):
-        """Test updating an event"""
-        updated_data = {
-            "event_name": "Updated Food Drive",
-            "description": "Updated description",
-            "location": "New Location",
-            "required_skills": ["Updated Skill"],
-            "urgency": "Critical",
-            "event_date": "2025-01-01"
-        }
-        response = self.app.put('/events/1',
-                               data=json.dumps(updated_data),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify update
-        self.assertEqual(DB["events"][1]["event_name"], "Updated Food Drive")
-
-    def test_update_event_not_found(self):
-        """Test updating non-existent event"""
-        event_data = {
-            "event_name": "Test",
-            "description": "Test",
-            "location": "Test",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": "2025-01-01"
-        }
-        response = self.app.put('/events/99999',
-                               data=json.dumps(event_data),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 404)
-
-    def test_delete_event(self):
-        """Test deleting an event"""
-        # Create a test event
-        DB["events"][994] = {
-            "event_name": "Delete Me",
-            "description": "Test",
-            "location": "Test",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": "2025-01-01",
-            "status": "open"
-        }
-
-        response = self.app.delete('/events/994')
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn(994, DB["events"])
-
-    def test_delete_event_not_found(self):
-        """Test deleting non-existent event"""
-        response = self.app.delete('/events/99999')
-        self.assertEqual(response.status_code, 404)
-
-    def test_get_specific_event(self):
-        """Test getting a specific event by ID"""
-        response = self.app.get('/events/1')
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        self.assertEqual(data["event_name"], "Community Food Drive")
-
-    def test_get_specific_event_not_found(self):
-        """Test getting non-existent event"""
-        response = self.app.get('/events/99999')
-        self.assertEqual(response.status_code, 404)
-
-    def test_event_with_volunteer_limit(self):
-        """Test creating event with volunteer limit"""
-        event_data = {
-            "event_name": "Limited Event",
-            "description": "Only 5 volunteers",
-            "location": "Test Location",
-            "required_skills": ["Test"],
-            "urgency": "Medium",
-            "event_date": "2025-06-01",
-            "volunteer_limit": 5
-        }
-        response = self.app.post('/events',
-                                data=json.dumps(event_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 201)
-
-    def test_event_with_invalid_volunteer_limit(self):
-        """Test creating event with invalid volunteer limit"""
-        event_data = {
-            "event_name": "Invalid Limit",
-            "description": "Test",
-            "location": "Test",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": "2025-01-01",
-            "volunteer_limit": 0
-        }
-        response = self.app.post('/events',
-                                data=json.dumps(event_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    #  User Management Tests 
-
-    def test_get_all_users(self):
-        """Test getting all users"""
-        response = self.app.get('/users')
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
-
-    def test_update_user_role(self):
-        """Test updating a user's role"""
-        response = self.app.put('/users/volunteer@example.com',
-                               data=json.dumps({"role": "admin"}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(DB["users"]["volunteer@example.com"]["role"], "admin")
-
-    def test_update_user_name(self):
-        """Test updating a user's name"""
-        response = self.app.put('/users/volunteer@example.com',
-                               data=json.dumps({"name": "Updated Name"}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(DB["users"]["volunteer@example.com"]["profile"]["full_name"], "Updated Name")
-
-    def test_update_user_not_found(self):
-        """Test updating non-existent user"""
-        response = self.app.put('/users/nouser@example.com',
-                               data=json.dumps({"role": "admin"}),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 404)
-
-    def test_delete_user(self):
-        """Test deleting a user"""
-        # Create test user
-        DB["users"]["deleteme@example.com"] = {
-            "password": "Password1",
-            "role": "volunteer",
-            "profile": {},
-            "history": []
-        }
-
-        response = self.app.delete('/users/deleteme@example.com')
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("deleteme@example.com", DB["users"])
-
-    def test_delete_user_not_found(self):
-        """Test deleting non-existent user"""
-        response = self.app.delete('/users/nouser@example.com')
-        self.assertEqual(response.status_code, 404)
-
-    def test_get_user_events(self):
-        """Test getting events a user has signed up for"""
-        response = self.app.get('/user/volunteer@example.com/events')
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        self.assertIn("events", data)
-
-    def test_get_user_events_not_found(self):
-        """Test getting events for non-existent user"""
-        response = self.app.get('/user/nouser@example.com/events')
-        self.assertEqual(response.status_code, 404)
-
-    # -Notification Tests 
-
-    def test_get_notifications(self):
-        """Test getting all notifications"""
-        response = self.app.get('/notifications')
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(json.loads(response.data), list)
-
-    def test_mark_notification_read(self):
-        """Test marking a notification as read"""
-        # Add a notification
-        notification = add_notification("Test notification", "info")
-
-        response = self.app.put(f'/notifications/{notification["id"]}/read')
-        self.assertEqual(response.status_code, 200)
-
-        # Verify it was marked as read
-        updated_notif = next((n for n in DB["notifications"] if n["id"] == notification["id"]), None)
-        self.assertTrue(updated_notif["read"])
-
-    def test_mark_notification_read_not_found(self):
-        """Test marking non-existent notification as read"""
-        response = self.app.put('/notifications/99999/read')
-        self.assertEqual(response.status_code, 404)
-
-    #  Activity Log Tests 
-
-    def test_get_activity(self):
-        """Test getting activity log"""
-        response = self.app.get('/activity')
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(json.loads(response.data), list)
-
-    # --- Validation Tests ---
-
-    def test_register_invalid_email(self):
-        """Test registration with invalid email"""
-        response = self.app.post('/register',
-                                data=json.dumps({"email": "invalid-email", "password": "Password1"}),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_register_password_too_short(self):
-        """Test registration with password too short"""
-        response = self.app.post('/register',
-                                data=json.dumps({"email": "test@test.com", "password": "Pass1"}),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_register_password_no_digit(self):
-        """Test registration with password missing digit"""
-        response = self.app.post('/register',
-                                data=json.dumps({"email": "test@test.com", "password": "PasswordOnly"}),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_register_password_no_uppercase(self):
-        """Test registration with password missing uppercase"""
-        response = self.app.post('/register',
-                                data=json.dumps({"email": "test@test.com", "password": "password1"}),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_update_profile_invalid_zip(self):
-        """Test profile update with invalid zip code"""
-        profile_data = {
-            "full_name": "Test User",
-            "address1": "123 Test St",
-            "city": "Test City",
-            "state": "TX",
-            "zip_code": "ABC",
-            "skills": ["Test"],
-            "availability": ["2025-01-01"]
-        }
-        response = self.app.put('/profile/volunteer@example.com',
-                               data=json.dumps(profile_data),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_update_profile_name_too_long(self):
-        """Test profile update with name too long"""
-        profile_data = {
-            "full_name": "A" * 51,
-            "address1": "123 Test St",
-            "city": "Test City",
-            "state": "TX",
-            "zip_code": "12345",
-            "skills": ["Test"],
-            "availability": ["2025-01-01"]
-        }
-        response = self.app.put('/profile/volunteer@example.com',
-                               data=json.dumps(profile_data),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_update_profile_empty_skills(self):
-        """Test profile update with empty skills list"""
-        profile_data = {
-            "full_name": "Test User",
-            "address1": "123 Test St",
-            "city": "Test City",
-            "state": "TX",
-            "zip_code": "12345",
-            "skills": [],
-            "availability": ["2025-01-01"]
-        }
-        response = self.app.put('/profile/volunteer@example.com',
-                               data=json.dumps(profile_data),
-                               content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_create_event_empty_name(self):
-        """Test creating event with empty name"""
-        event_data = {
-            "event_name": "",
-            "description": "Test",
-            "location": "Test",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": "2025-01-01"
-        }
-        response = self.app.post('/events',
-                                data=json.dumps(event_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_create_event_name_too_long(self):
-        """Test creating event with name too long"""
-        event_data = {
-            "event_name": "A" * 101,
-            "description": "Test",
-            "location": "Test",
-            "required_skills": ["Test"],
-            "urgency": "Low",
-            "event_date": "2025-01-01"
-        }
-        response = self.app.post('/events',
-                                data=json.dumps(event_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_create_event_empty_skills(self):
-        """Test creating event with empty required skills"""
-        event_data = {
-            "event_name": "Test Event",
-            "description": "Test",
-            "location": "Test",
-            "required_skills": [],
-            "urgency": "Low",
-            "event_date": "2025-01-01"
-        }
-        response = self.app.post('/events',
-                                data=json.dumps(event_data),
-                                content_type='application/json')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(data), 50) # init_db() seeds 50 states
+        self.assertEqual(data[0]['code'], 'AL')
+        self.assertEqual(data[0]['name'], 'Alabama')
 
 if __name__ == '__main__':
     unittest.main()
+

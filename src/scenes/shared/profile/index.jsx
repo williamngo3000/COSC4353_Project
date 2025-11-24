@@ -75,7 +75,8 @@ const ProfilePage = ({ loggedInUser, setLoggedInUser, addNotification }) => {
 
             setLoggedInUser({ ...loggedInUser, profileComplete: true });
             addNotification("Profile updated successfully!", "success");
-            navigate("/");
+            // Stay on profile page after update
+            // navigate("/");
         } catch (e) {
             addNotification(e.message || "Profile update failed", "error");
         }

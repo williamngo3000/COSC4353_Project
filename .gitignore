@@ -7,10 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-.md_files
+# May not need since this is firebase; Depreciated
 Backend/config/volunteerapp-3eb0e-firebase-adminsdk-fbsvc-00bcd2c03a.json
+
+.md_files 
 node_modules
 **/venv/
+**/.venv/
 dist
 dist-ssr
 *.local
@@ -26,5 +29,11 @@ dist-ssr
 *.sln
 *.sw?
 
+# Ignore datbase
+*.db
+volunteer.db
+
 # Backup
 COSC4353_Project.7z
+*.7z
+*.zip

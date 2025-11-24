@@ -1,22 +1,55 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from pydantic import BaseModel, field_validator, ValidationError
-from typing import List, Optional
+import os
 import re
 import json
-import os
+import csv
+import io
+from flask import Flask, jsonify, request, make_response
+from flask_cors import CORS
+from werkzeug.security import check_password_hash
+from pydantic import BaseModel, field_validator, ValidationError, Field
+from typing import List, Optional
+from datetime import datetime, date, timezone
+import sys # Import sys for logging
 
+# Import all models and the db object from your models.py
+# Update: includes EventInvite and Notification module because apparently these didn't exist back then - Will
+from models import (
+    db, 
+    UserCredentials, 
+    UserProfile, 
+    EventDetails, 
+    VolunteerHistory, 
+    States,
+    EventInvite,
+    Notification
+)
+
+# App & DB Setup
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 app = Flask(__name__)
-CORS(app)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///volunteer.db"  # creates Backend/volunteer.db
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Make sure your React app is running on 5173
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'volunteer.db')}"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+# Link the db object from models.py to our app
+db.init_app(app)
 
 
+# --- Helper Function to create notifications ---
+def create_notification(message, msg_type='info'):
+    """Helper to create a new notification."""
+    try:
+        # We must be inside an app context to do database operations
+        with app.app_context():
+            new_notif = Notification(message=message, type=msg_type)
+            db.session.add(new_notif)
+            db.session.commit()
+    except Exception as e:
+        print(f"Error creating notification: {e}", file=sys.stderr)
+        db.session.rollback()
 
-# Pydantic Models for Data Validation 
+# --- Pydantic Models for Data Validation ---
 
 class UserRegistration(BaseModel):
     email: str
@@ -25,7 +58,6 @@ class UserRegistration(BaseModel):
     @field_validator('email')
     @classmethod
     def email_must_be_valid(cls, value):
-        # A simple regex for email validation
         if not re.match(r"[^@]+@[^@]+\.[^@]+", value):
             raise ValueError('Email is not valid')
         return value
@@ -35,10 +67,6 @@ class UserRegistration(BaseModel):
     def password_complexity(cls, value):
         if len(value) < 8:
             raise ValueError('Password must be at least 8 characters long')
-        if not any(char.isdigit() for char in value):
-            raise ValueError('Password must contain at least one number')
-        if not any(char.isupper() for char in value):
-            raise ValueError('Password must contain at least one uppercase letter')
         return value
 
 class UserLogin(BaseModel):
@@ -46,654 +74,1369 @@ class UserLogin(BaseModel):
     password: str
 
 class ProfileUpdate(BaseModel):
-    full_name: str
-    address1: str
+    model_config = {"arbitrary_types_allowed": True}
+    
+    # All fields optional for partial updates
+    full_name: Optional[str] = None 
+    address1: Optional[str] = None
     address2: Optional[str] = None
-    city: str
-    state: str
-    zip_code: str
-    skills: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = Field(default=None, validation_alias='zip_code')
+    skills: Optional[str] = None
     preferences: Optional[str] = None
-    availability: List[str]
+    availability: Optional[str] = None
 
-    @field_validator('full_name')
+    # Convert lists to comma-separated strings - handles both list input and string input
+    '''
+        This later changed for some aspects bc it broke code; I modified the aspects, keeping this root one because it seemed like less work and more efficient
+        - Will
+    '''
+    @field_validator('skills', 'availability', mode='before')
     @classmethod
-    def full_name_length(cls, value):
-        if not (1 <= len(value) <= 50):
-            raise ValueError('Full name must be between 1 and 50 characters')
-        return value
-
-    @field_validator('zip_code')
+    def convert_list_to_string(cls, value):
+        if value is None or value == "":
+            return None
+        if isinstance(value, list):
+            filtered = [str(v).strip() for v in value if v and str(v).strip()]
+            return ', '.join(filtered) if filtered else None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else None
+        return str(value)
+    
+    # Validate zip code format
+    @field_validator('zip_code', mode='before')
     @classmethod
-    def zip_code_format(cls, value):
-        if not (5 <= len(value) <= 9 and value.isdigit()):
-            raise ValueError('Zip code must be a 5 to 9 digit number')
-        return value
-
-    @field_validator('skills', 'availability')
+    def validate_zipcode(cls, value):
+        if value is None or value == "":
+            return None
+        value_str = str(value).strip()
+        if value_str == "":
+            return None
+        if not (value_str.isdigit() and (len(value_str) == 5 or len(value_str) == 9)):
+            raise ValueError('Zip code must be 5 or 9 digits')
+        return value_str
+    
+    # Clean up string fields
+    @field_validator('full_name', 'address1', 'address2', 'city', 'state', 'preferences', mode='before')
     @classmethod
-    def lists_not_empty(cls, value):
-        if not value:
-            raise ValueError('This field cannot be empty')
+    def clean_strings(cls, value):
+        if value is None or value == "":
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else None
         return value
-
 class EventCreation(BaseModel):
+    '''
+        Modified some categories from List to String because it was throwing errors - Will
+    '''
     event_name: str
-    description: str
-    location: str
-    required_skills: List[str]
-    urgency: str
-    event_date: str
-    volunteer_limit: Optional[int] = None  # None means unlimited
+    description: Optional[str] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zipcode: Optional[str] = None
+    skills: Optional[str] = None
+    required_skills: Optional[str] = None
+    preferences: Optional[str] = None
+    availability: Optional[str] = None
+    urgency: Optional[str] = None
+    event_date: Optional[str] = None
+    volunteer_limit: Optional[int] = None
+    status: Optional[str] = 'open'
 
-    @field_validator('volunteer_limit')
+    # Convert lists to comma-separated strings
+    @field_validator('skills', 'availability', 'required_skills', mode='before')
     @classmethod
-    def validate_volunteer_limit(cls, value):
-        if value is not None and value < 1:
-            raise ValueError('Volunteer limit must be at least 1')
+    def convert_list_to_string(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return ', '.join(str(v) for v in value if v)
         return value
 
-    @field_validator('event_name')
+    @field_validator('event_date', mode='before')
     @classmethod
-    def event_name_length(cls, value):
-        if not (1 <= len(value) <= 100):
-            raise ValueError('Event name must be between 1 and 100 characters')
+    def validate_date(cls, value):
+        if value is None:
+            return None
+        try:
+            # Check if it's a valid YYYY-MM-DD string
+            datetime.strptime(value, '%Y-%m-%d')
+            return value
+        except ValueError:
+            raise ValueError('Event date must be in YYYY-MM-DD format')
+
+    @field_validator('urgency', mode='before')
+    @classmethod
+    def validate_urgency(cls, value):
+        if value is None:
+            return 'Medium'
+        if value not in ['Low', 'Medium', 'High', 'Critical']:
+            return 'Medium'
         return value
 
-    @field_validator('required_skills')
+
+class EventUpdate(BaseModel):
+    """
+        Updated Model for updating events - all fields are optional for partial updates in case Admin wants to change only one aspect
+    """
+    event_name: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zipcode: Optional[str] = None
+    skills: Optional[str] = None
+    required_skills: Optional[str] = None
+    preferences: Optional[str] = None
+    availability: Optional[str] = None
+    urgency: Optional[str] = None
+    event_date: Optional[str] = None
+    volunteer_limit: Optional[int] = None
+    status: Optional[str] = None
+
+    # Convert lists to comma-separated strings
+    @field_validator('skills', 'availability', 'required_skills', mode='before')
     @classmethod
-    def required_skills_not_empty(cls, value):
-        if not value:
-            raise ValueError('Required skills cannot be empty')
+    def convert_list_to_string(cls, value):
+        # Handle None and empty strings
+        if value is None or value == '':
+            return None
+        if isinstance(value, list):
+            return ', '.join(str(v) for v in value if v)
         return value
 
-#  Flask App Initialization 
-app = Flask(__name__)
-CORS(app)
+    @field_validator('event_date', mode='before')
+    @classmethod
+    def validate_date(cls, value):
+        # Handle None and empty strings
+        if value is None or value == '':
+            return None
+        try:
+            datetime.strptime(value, '%Y-%m-%d')
+            return value
+        except ValueError:
+            raise ValueError('Event date must be in YYYY-MM-DD format')
 
-# In-Memory Database Simulation 
-DB = {
-    "users": {
-        "volunteer@example.com": {
-            "password": "Password1", "role": "volunteer",
-            "profile": {
-                "full_name": "John Doe",
-                "address1": "123 Main St",
-                "address2": "Apt 4B",
-                "city": "Houston",
-                "state": "TX",
-                "zip_code": "77002",
-                "phone": "(555) 123-4567",
-                "skills": ["First Aid", "Logistics"],
-                "preferences": "I prefer morning events.",
-                "availability": ["2024-12-01", "2024-12-15"]
-            },
-            "history": [1]
-        },
-        "admin@example.com": {
-            "password": "AdminPassword1",
-            "role": "admin",
-            "profile": {
-                "full_name": "Jane Smith",
-                "address1": "456 Admin Ave",
-                "city": "Houston",
-                "state": "TX",
-                "zip_code": "77002",
-                "phone": "(555) 987-6543",
-                "skills": ["Team Leadership", "Public Speaking"], "preferences": "",
-                "availability": ["2024-11-01", "2024-12-01"]
-            },
-            "history": []
-        }
-    },
-    "events": {
-        1: {
-            "event_name": "Community Food Drive",
-            "description": "Annual food drive to support local families.",
-            "location": "Downtown Community Center",
-            "required_skills": ["Logistics", "Event Setup"],
-            "urgency": "High",
-            "event_date": "9999-01-01",
-            "volunteer_limit": 10,
-            "status": "open"
-        },
-        2: {
-            "event_name": "Park Cleanup Day",
-            "description": "Help us clean and beautify Memorial Park.",
-            "location": "Memorial Park",
-            "required_skills": ["Event Setup"],
-            "urgency": "Medium",
-            "event_date": "2024-11-20",
-            "volunteer_limit": None,
-            "status": "open"
-        }
-    },
-    "skills": ["First Aid", "Logistics", "Event Setup", "Public Speaking", "Registration", "Tech Support", "Catering", "Marketing", "Fundraising", "Photography", "Social Media", "Team Leadership", "Translation"],
-    "urgency_levels": ["Low", "Medium", "High", "Critical"],
-    "notifications": [],
-    "activity_log": [],
-    "invites": [],
-    "invite_counter": 1
-}
+    @field_validator('urgency', mode='before')
+    @classmethod
+    def validate_urgency(cls, value):
+        # Handle None and empty strings
+        if value is None or value == '':
+            return None
+        if value not in ['Low', 'Medium', 'High', 'Critical']:
+            return 'Medium'
+        return value
 
-# Helper Functions 
-from datetime import datetime
 
-def add_notification(message, type="info"):
-    """Add a notification to the notifications list"""
-    notification = {
-        "id": len(DB["notifications"]) + 1,
-        "message": message,
-        "type": type,
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "read": False
-    }
-    # Add to beginning
-    DB["notifications"].insert(0, notification)
-    # Keep only last 50 notifications
-    if len(DB["notifications"]) > 50:
-        DB["notifications"] = DB["notifications"][:50]
-    return notification
+class InviteUpdate(BaseModel):
+    status: str
 
-def add_activity(type, **kwargs):
-    """Add an activity to the activity log"""
-    activity = {
-        "type": type,
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        **kwargs
-    }
-    # Add to beginning
-    DB["activity_log"].insert(0, activity)
-    # Keep only last 50 activities
-    if len(DB["activity_log"]) > 50:
-        DB["activity_log"] = DB["activity_log"][:50]
-    return activity
-
-def get_event_volunteer_count(event_id):
-    """Get the current number of accepted volunteers for an event"""
-    return len([inv for inv in DB["invites"]
-                if inv['event_id'] == event_id and inv['status'] == 'accepted'])
-
-def check_and_close_event(event_id):
-    """Check if event should be closed (full or date passed) and close it"""
-    event = DB["events"].get(event_id)
-    if not event or event.get("status") == "closed":
-        return False
-
-    # Check if event date has passed
-    event_date = datetime.strptime(event["event_date"], "%Y-%m-%d").date()
-    today = datetime.now().date()
-
-    if event_date < today:
-        event["status"] = "closed"
-        return True
-
-    # Check if volunteer limit reached
-    volunteer_limit = event.get("volunteer_limit")
-    if volunteer_limit is not None:
-        current_count = get_event_volunteer_count(event_id)
-        if current_count >= volunteer_limit:
-            event["status"] = "closed"
-            return True
-
-    return False
-
-def check_all_events_status():
-    """Check and auto-close all events that should be closed"""
-    for event_id in DB["events"]:
-        check_and_close_event(event_id)
-
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, value):
+        if value not in ('accepted', 'declined'):
+            raise ValueError("Status must be 'accepted' or 'declined'")
+        return value
 # --- API Endpoints ---
 
 @app.route('/register', methods=['POST'])
 def register_user():
+    """Register a new user (admin or volunteer)."""
     try:
         user_data = UserRegistration(**request.json)
-        if user_data.email in DB["users"]:
-            return jsonify({"message": "User with this email already exists"}), 409
-
-        DB["users"][user_data.email] = {
-            "password": user_data.password, "role": "volunteer",
-            "profile": {}, "history": []
-        }
-
-        # Add notification and activity log
-        add_notification(f"New user registered: {user_data.email}", "info")
-        add_activity("registration", user=user_data.email)
-
-        return jsonify({"message": "Registration successful", "user": {"email": user_data.email, "role": "volunteer"}}), 201
     except ValidationError as e:
         return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+
+    if UserCredentials.query.filter_by(email=user_data.email).first():
+        return jsonify({"message": "User with this email already exists"}), 409
+
+    try:
+        new_user = UserCredentials(
+            email=user_data.email,
+            role="admin" if user_data.email == "admin@example.com" else "volunteer"
+        )
+        new_user.set_password(user_data.password)
+        db.session.add(new_user)
+        db.session.commit()
+        
+        # Create a notification for the admin
+        create_notification(f"New user registered: {new_user.email}", 'info')
+        
+        return jsonify({"message": "Registration successful", "user": {"email": new_user.email, "role": new_user.role}}), 201
+    
     except Exception as e:
+        db.session.rollback()
+        print(f"--- 500 ERROR IN /register ---: {e}", file=sys.stderr)
         return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
 
 @app.route('/login', methods=['POST'])
 def login_user():
+    """Log in a user."""
     try:
         login_data = UserLogin(**request.json)
-        user = DB["users"].get(login_data.email)
+    except ValidationError as e:
+        return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
 
-        if not user or user["password"] != login_data.password:
+    try:
+        user = UserCredentials.query.filter_by(email=login_data.email).first()
+
+        if not user or not user.check_password(login_data.password):
             return jsonify({"message": "Invalid email or password"}), 401
+
+        # Check if a profile exists
+        profile_complete = db.session.get(UserProfile, user.id) is not None
 
         return jsonify({
             "message": "Login successful",
             "user": {
-                "email": login_data.email, "role": user["role"],
-                "profileComplete": bool(user.get("profile"))
+                "email": user.email,
+                "role": user.role,
+                "profileComplete": profile_complete
             }
         }), 200
-    except ValidationError as e:
-        return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+    
     except Exception as e:
+        print(f"--- 500 ERROR IN /login ---: {e}", file=sys.stderr)
         return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
 
 @app.route('/profile/<string:email>', methods=['GET', 'PUT'])
 def user_profile(email):
-    user = DB["users"].get(email)
-    if not user:
+    """Get or Update a user's profile."""
+    user_creds = UserCredentials.query.filter_by(email=email).first()
+    if not user_creds:
         return jsonify({"message": "User not found"}), 404
 
     if request.method == 'GET':
-        return jsonify(user.get("profile", {})), 200
+        profile = db.session.get(UserProfile, user_creds.id)
+        if not profile:
+            return jsonify({}), 200
+        
+        # Convert comma-separated strings back to lists
+        skills_list = [s.strip() for s in profile.skills.split(',')] if profile.skills else []
+        availability_list = [a.strip() for a in profile.availability.split(',')] if profile.availability else []
+
+        return jsonify({
+            "full_name": profile.full_name,
+            "address1": profile.address1,
+            "address2": profile.address2,
+            "city": profile.city,
+            "state": profile.state,
+            "zip_code": profile.zipcode,
+            "skills": skills_list,
+            "preferences": profile.preferences,
+            "availability": availability_list
+        }), 200
 
     if request.method == 'PUT':
         try:
             profile_data = ProfileUpdate(**request.json)
-            DB["users"][email]["profile"] = profile_data.model_dump()
-            return jsonify({"message": "Profile updated successfully", "profile": profile_data.model_dump()}), 200
+            update_data = profile_data.model_dump(exclude_unset=True)
+
         except ValidationError as e:
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+
+        try:
+            profile = db.session.get(UserProfile, user_creds.id)
+            
+            if not profile:
+                # Creating new profile - full_name required
+                if 'full_name' not in update_data:
+                    return jsonify({"message": "Validation error", "errors": {"full_name": "Full name is required to create a profile."}}), 400
+                
+                profile = UserProfile(id=user_creds.id)
+                db.session.add(profile)
+
+            # Apply all updates
+            for key, value in update_data.items():
+                if key == 'zip_code':
+                    setattr(profile, 'zipcode', value)
+                else:
+                    setattr(profile, key, value)
+
+            db.session.commit()
+            return jsonify({"message": "Profile updated successfully"}), 200
+        
         except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN PUT /profile ---: {e}", file=sys.stderr)
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
 @app.route('/events', methods=['GET', 'POST'])
 def manage_events():
+    """Get all events or create a new event."""
     if request.method == 'GET':
-        # Check and update event statuses before returning
-        check_all_events_status()
+        try:
+            events = EventDetails.query.all()
+            event_list = []
+            for event in events:
+                # Count current volunteers (accepted invites)
+                current_vol_count = EventInvite.query.filter_by(event_id=event.id, status='accepted').count()
 
-        # Check if we should only return open events (for invite dropdowns)
-        only_open = request.args.get('only_open', 'false').lower() == 'true'
-
-        # Add volunteer count to each event
-        event_list = []
-        for id, event in DB["events"].items():
-            # Filter out closed events if only_open is true
-            if only_open and event.get("status") == "closed":
-                continue
-
-            event_data = {"id": id, **event}
-            event_data["current_volunteers"] = get_event_volunteer_count(id)
-            event_list.append(event_data)
-
-        return jsonify(event_list), 200
+                event_list.append({
+                    "id": event.id,
+                    "event_name": event.event_name,
+                    "description": event.description,
+                    "location": event.location,
+                    "city": event.city,
+                    "state": event.state,
+                    "zipcode": event.zipcode,
+                    "skills": event.skills,
+                    "required_skills": event.required_skills,
+                    "preferences": event.preferences,
+                    "availability": event.availability,
+                    "urgency": event.urgency,
+                    "event_date": event.event_date.strftime('%Y-%m-%d') if event.event_date else None,
+                    "volunteer_limit": event.volunteer_limit,
+                    "current_volunteers": current_vol_count,
+                    "status": event.status
+                })
+            return jsonify(event_list), 200
+        except Exception as e:
+            print(f"--- 500 ERROR IN GET /events ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
     if request.method == 'POST':
         try:
+            print(f"--- POST /events REQUEST DATA ---: {request.json}", file=sys.stderr)
             event_data = EventCreation(**request.json)
-            new_id = max(DB["events"].keys()) + 1 if DB["events"] else 1
-            event_dict = event_data.model_dump()
-            event_dict["status"] = "open"  # All new events start as open
-            DB["events"][new_id] = event_dict
-
-            # Add notification and activity log
-            add_notification(f"New event created: {event_data.event_name}", "success")
-            add_activity("event_created", event=event_data.event_name)
-
-            return jsonify({"message": "Event created successfully", "event": {"id": new_id, **event_dict}}), 201
         except ValidationError as e:
+            print(f"--- VALIDATION ERROR IN POST /events ---: {e.json()}", file=sys.stderr)
             return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+
+        try:
+            new_event = EventDetails(
+                event_name=event_data.event_name,
+                description=event_data.description,
+                location=event_data.location,
+                city=event_data.city,
+                state=event_data.state,
+                zipcode=event_data.zipcode,
+                skills=event_data.skills,
+                required_skills=event_data.required_skills,
+                preferences=event_data.preferences,
+                availability=event_data.availability,
+                urgency=event_data.urgency or 'Medium',
+                event_date=datetime.strptime(event_data.event_date, '%Y-%m-%d').date() if event_data.event_date else None,
+                volunteer_limit=event_data.volunteer_limit,
+                current_volunteers=0,
+                status=event_data.status or 'open'
+            )
+            db.session.add(new_event)
+            db.session.commit()
+            return jsonify({"message": "Event created successfully", "event_id": new_event.id}), 201
+
         except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN POST /events ---: {e}", file=sys.stderr)
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
+
 @app.route('/events/<int:event_id>', methods=['GET', 'PUT', 'DELETE'])
-def modify_event(event_id):
-    """Get, update, or delete a specific event by ID"""
-    if event_id not in DB["events"]:
-        return jsonify({"message": "Event not found"}), 404
+def manage_event_by_id(event_id):
+    """Get, update, or delete a single event by its ID."""
 
     if request.method == 'GET':
-        event = DB["events"][event_id]
-        return jsonify({"id": event_id, **event}), 200
+        try:
+            event = db.session.get(EventDetails, event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
+
+            # Count current volunteers (accepted invites)
+            current_vol_count = EventInvite.query.filter_by(event_id=event.id, status='accepted').count()
+
+            return jsonify({
+                "id": event.id,
+                "event_name": event.event_name,
+                "description": event.description,
+                "location": event.location,
+                "city": event.city,
+                "state": event.state,
+                "zipcode": event.zipcode,
+                "skills": event.skills,
+                "required_skills": event.required_skills,
+                "preferences": event.preferences,
+                "availability": event.availability,
+                "urgency": event.urgency,
+                "event_date": event.event_date.strftime('%Y-%m-%d') if event.event_date else None,
+                "volunteer_limit": event.volunteer_limit,
+                "current_volunteers": current_vol_count,
+                "status": event.status
+            }), 200
+        except Exception as e:
+            print(f"--- 500 ERROR IN GET /events/{event_id} ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
     if request.method == 'PUT':
         try:
-            event_data = EventCreation(**request.json)
-            DB["events"][event_id] = event_data.model_dump()
-            return jsonify({"message": "Event updated successfully", "event": {"id": event_id, **event_data.model_dump()}}), 200
-        except ValidationError as e:
-            return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+            event = db.session.get(EventDetails, event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
+
+            # Validate input with Pydantic (all fields optional for updates)
+            try:
+                print(f"--- PUT /events/{event_id} REQUEST DATA ---: {request.json}", file=sys.stderr)
+                # OLD: event_data = EventCreation(**request.json)
+                # NEW: Use EventUpdate model which has all fields optional
+                event_data = EventUpdate(**request.json)
+            except ValidationError as e:
+                print(f"--- VALIDATION ERROR IN PUT /events/{event_id} ---: {e.json()}", file=sys.stderr)
+                return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+
+            # OLD: Update event fields one by one
+            # event.event_name = event_data.event_name
+            # event.description = event_data.description
+            # event.location = event_data.location
+            # event.city = event_data.city
+            # event.state = event_data.state
+            # event.zipcode = event_data.zipcode
+            # event.skills = event_data.skills
+            # event.required_skills = event_data.required_skills
+            # event.preferences = event_data.preferences
+            # event.availability = event_data.availability
+            # event.urgency = event_data.urgency or 'Medium'
+            # event.event_date = datetime.strptime(event_data.event_date, '%Y-%m-%d').date() if event_data.event_date else None
+            # event.volunteer_limit = event_data.volunteer_limit
+            # if event_data.status:
+            #     event.status = event_data.status
+
+            # NEW: Update only provided fields
+            update_dict = event_data.model_dump(exclude_unset=True)
+            for key, value in update_dict.items():
+                if key == 'event_date' and value is not None:
+                    setattr(event, key, datetime.strptime(value, '%Y-%m-%d').date())
+                else:
+                    setattr(event, key, value)
+
+            db.session.commit()
+            return jsonify({"message": "Event updated successfully"}), 200
+
         except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN PUT /events/{event_id} ---: {e}", file=sys.stderr)
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
     if request.method == 'DELETE':
-        del DB["events"][event_id]
-        return jsonify({"message": "Event deleted successfully"}), 200
+        try:
+            event = db.session.get(EventDetails, event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
 
-@app.route('/data/skills', methods=['GET'])
-def get_skills():
-    return jsonify(DB["skills"]), 200
+            # Delete all associated invites first
+            EventInvite.query.filter_by(event_id=event_id).delete()
 
-@app.route('/data/urgency', methods=['GET'])
-def get_urgency_levels():
-    return jsonify(DB["urgency_levels"]), 200
+            # Delete all volunteer history records
+            VolunteerHistory.query.filter_by(event_id=event_id).delete()
 
-@app.route("/matching/<int:event_id>", methods=["GET"])
-def get_volunteer_matches(event_id):
-    event = DB["events"].get(event_id)
-    if not event:
-        return jsonify({"message": "Event not found"}), 404
+            # Delete the event
+            db.session.delete(event)
+            db.session.commit()
 
-    matches = []
-    event_date_str = event["event_date"]  # already in YYYY-MM-DD
+            return jsonify({"message": "Event deleted successfully"}), 200
 
-    for email, user_data in DB["users"].items():
-        if user_data["role"] != "volunteer" or "profile" not in user_data:
-            continue
+        except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN DELETE /events/{event_id} ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-        profile = user_data.get("profile", {})
-        if not profile:
-            continue
 
-        skills = profile.get("skills", [])
-        availability = profile.get("availability", [])
+# --- NEW: Get all volunteers for a specific event ---
+@app.route('/events/<int:event_id>/volunteers', methods=['GET'])
+def get_event_volunteers(event_id):
+    """Get all approved volunteers for a specific event."""
+    try:
+        event = db.session.get(EventDetails, event_id)
+        if not event:
+            return jsonify({"message": "Event not found"}), 404
 
-        #  Skill match
-        has_skill = any(s in event.get("required_skills", []) for s in skills)
+        # Find all 'accepted' invites for this event
+        accepted_invites = EventInvite.query.filter_by(event_id=event_id, status='accepted').all()
+        
+        volunteer_list = []
+        for invite in accepted_invites:
+            user = invite.user # Get the user from the relationship
+            if user and user.profile:
+                volunteer_list.append({
+                    "user_id": user.id,
+                    "email": user.email,
+                    "full_name": user.profile.full_name,
+                    "skills": user.profile.skills
+                })
+            
+        return jsonify(volunteer_list), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /events/{event_id}/volunteers ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-        #  Availability logic (tests expect this to always allow)
-        # If volunteer has availability list, ignore mismatch (test setup has fake dates)
-        is_available = True
 
-        if has_skill and is_available:
-            matches.append({
-                "email": email,
-                "full_name": profile.get("full_name", ""),
-                "skills": skills
-            })
+@app.route('/invites', methods=['GET', 'POST'])
+def manage_invites():
+    """GET: Fetch all invites (for admin). POST: Create a new invite (signup)."""
+    
+    if request.method == 'GET':
+        try:
+            status = request.args.get('status')
+            invite_type = request.args.get('type')
 
-    return jsonify(matches), 200
+            query = EventInvite.query
+            if status:
+                query = query.filter_by(status=status)
+            if invite_type:
+                query = query.filter_by(type=invite_type)
+            
+            invites = query.order_by(EventInvite.created_at.desc()).all()
+            
+            result = []
+            for invite in invites:
+                result.append({
+                    "id": invite.id,
+                    "user_id": invite.user_id,
+                    "event_id": invite.event_id,
+                    "status": invite.status,
+                    "type": invite.type,
+                    "completed": invite.completed,
+                    "user_email": invite.user.email,
+                    "event_name": invite.event.event_name
+                })
+            return jsonify(result), 200
+        except Exception as e:
+            print(f"--- 500 ERROR IN GET /invites ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+    if request.method == 'POST':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"message": "Validation error: No data provided"}), 400
+            
+            # Get user identifier and event_id from request
+            email = data.get('email')
+            user_id = data.get('user_id')
+            event_id = data.get('event_id')
+            invite_type = data.get('type', 'user_request')  # Default to 'user_request' if not provided
+
+            # Validation
+            if not email and not user_id:
+                return jsonify({"message": "Validation error: 'email' or 'user_id' is required"}), 400
+            if not event_id:
+                return jsonify({"message": "Validation error: 'event_id' is required"}), 400
+
+            # Find the user (try by email first, then by user_id)
+            if email:
+                user_creds = UserCredentials.query.filter_by(email=email).first()
+            else:
+                user_creds = db.session.get(UserCredentials, user_id)
+            
+            if not user_creds:
+                return jsonify({"message": "User not found"}), 404
+            
+            # Use the found user's email for the notification
+            email = user_creds.email
+
+            # Find the event
+            event = db.session.get(EventDetails, event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
+
+            # Check if already signed up (in history)
+            existing_history = VolunteerHistory.query.filter_by(user_id=user_creds.id, event_id=event_id).first()
+            if existing_history:
+                return jsonify({"message": "Already signed up for this event"}), 409
+
+            # Check if an invite of the same type is already pending
+            existing_invite = EventInvite.query.filter_by(user_id=user_creds.id, event_id=event_id, status='pending', type=invite_type).first()
+            if existing_invite:
+                return jsonify({"message": "An invite of this type is already pending for this user and event"}), 409
+
+            # Create a new invite
+            new_invite = EventInvite(
+                user_id=user_creds.id,
+                event_id=event_id,
+                status='pending',
+                type=invite_type
+            )
+            db.session.add(new_invite)
+
+            # Create a notification
+            if invite_type == 'admin_invite':
+                create_notification(f"Admin invited {email} to {event.event_name}", 'info')
+            else:
+                create_notification(f"Volunteer {email} requested to join {event.event_name}", 'info')
+            
+            db.session.commit()
+            return jsonify({"message": "Request sent, awaiting admin approval"}), 201
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN POST /invites ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+@app.route('/invites/<int:invite_id>', methods=['PUT', 'DELETE'])
+def manage_invite(invite_id):
+    """Update or delete an invite."""
+
+    if request.method == 'PUT':
+        try:
+            invite = db.session.get(EventInvite, invite_id)
+            if not invite:
+                return jsonify({"message": "Invite not found"}), 404
+
+            # Validate input
+            try:
+                invite_data = InviteUpdate(**request.json)
+            except ValidationError as e:
+                return jsonify({"message": "Validation error", "errors": json.loads(e.json())}), 400
+
+            # Update status
+            old_status = invite.status
+            invite.status = invite_data.status
+
+            # If changing from pending to accepted, add to volunteer history
+            if old_status == 'pending' and invite_data.status == 'accepted':
+                # Check if already in history
+                existing_history = VolunteerHistory.query.filter_by(
+                    user_id=invite.user_id,
+                    event_id=invite.event_id
+                ).first()
+
+                if not existing_history:
+                    # Add to volunteer history
+                    new_history = VolunteerHistory(
+                        user_id=invite.user_id,
+                        event_id=invite.event_id
+                    )
+                    db.session.add(new_history)
+
+            db.session.commit()
+            return jsonify({"message": "Invite updated successfully"}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN PUT /invites/{invite_id} ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+    if request.method == 'DELETE':
+        try:
+            invite = db.session.get(EventInvite, invite_id)
+            if not invite:
+                return jsonify({"message": "Invite not found"}), 404
+
+            # Remove from volunteer history if exists
+            VolunteerHistory.query.filter_by(
+                user_id=invite.user_id,
+                event_id=invite.event_id
+            ).delete()
+
+            # Delete the invite
+            db.session.delete(invite)
+            db.session.commit()
+
+            return jsonify({"message": "Invite deleted successfully"}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN DELETE /invites/{invite_id} ---: {e}", file=sys.stderr)
+            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+@app.route('/invites/<int:invite_id>/complete', methods=['PUT'])
+def update_invite_completion(invite_id):
+    """Mark an invite as completed or not completed."""
+    try:
+        invite = db.session.get(EventInvite, invite_id)
+        if not invite:
+            return jsonify({"message": "Invite not found"}), 404
+
+        # Get completed status from request body
+        data = request.json
+        if data is None or 'completed' not in data:
+            return jsonify({"message": "Validation error: 'completed' field is required"}), 400
+
+        completed = data.get('completed')
+        if not isinstance(completed, bool):
+            return jsonify({"message": "Validation error: 'completed' must be a boolean"}), 400
+
+        # Update completion status
+        invite.completed = completed
+        db.session.commit()
+
+        return jsonify({"message": "Completion status updated successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"--- 500 ERROR IN PUT /invites/{invite_id}/complete ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+@app.route('/invites/user/<string:email>', methods=['GET'])
+def get_user_invites(email):
+    """Get all invites for a specific user by email."""
+    try:
+        # Find the user by email
+        user_creds = UserCredentials.query.filter_by(email=email).first()
+        if not user_creds:
+            return jsonify({"message": "User not found"}), 404
+
+        # Get query parameters for filtering
+        status = request.args.get('status')
+        invite_type = request.args.get('type')
+
+        # Build query starting with user_id filter
+        query = EventInvite.query.filter_by(user_id=user_creds.id)
+
+        # Apply optional filters
+        if status:
+            query = query.filter_by(status=status)
+        if invite_type:
+            query = query.filter_by(type=invite_type)
+
+        # Get filtered invites
+        invites = query.all()
+
+        result = []
+        for invite in invites:
+            invite_data = {
+                "id": invite.id,
+                "user_id": invite.user_id,
+                "event_id": invite.event_id,
+                "status": invite.status,
+                "type": invite.type,
+                "completed": invite.completed,
+                "created_at": invite.created_at.isoformat(),
+                "user_email": invite.user.email,
+                "event_name": invite.event.event_name
+            }
+
+            # Include full event details if available
+            if invite.event:
+                invite_data["event"] = {
+                    "id": invite.event.id,
+                    "event_name": invite.event.event_name,
+                    "description": invite.event.description,
+                    "location": invite.event.location,
+                    "event_date": invite.event.event_date.isoformat() if invite.event.event_date else None,
+                    "required_skills": invite.event.required_skills,
+                    "urgency": invite.event.urgency
+                }
+
+            result.append(invite_data)
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /invites/user/{email} ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+@app.route('/user/<string:email>/events', methods=['GET'])
+def get_user_events(email):
+    """Get all accepted events for a user with completion status."""
+    try:
+        user_creds = UserCredentials.query.filter_by(email=email).first()
+        if not user_creds:
+            return jsonify({"message": "User not found"}), 404
+
+        accepted_invites = EventInvite.query.filter_by(
+            user_id=user_creds.id,
+            status='accepted'
+        ).all()
+
+        event_list = []
+        for invite in accepted_invites:
+            event = invite.event
+            if event:
+                event_list.append({
+                    "event_id": event.id,
+                    "event_name": event.event_name,
+                    "description": event.description,
+                    "location": event.location,
+                    "event_date": event.event_date.strftime('%Y-%m-%d') if event.event_date else None,
+                    "required_skills": event.required_skills,
+                    "completed": invite.completed
+                })
+
+        return jsonify({"events": event_list}), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /user/{email}/events ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
 
 @app.route('/history/<string:email>', methods=['GET'])
 def get_volunteer_history(email):
-    user = DB["users"].get(email)
-    if not user:
-        return jsonify({"message": "User not found"}), 404
+    """Get a specific volunteer's event history."""
+    try:
+        user_creds = UserCredentials.query.filter_by(email=email).first()
+        if not user_creds:
+            return jsonify({"message": "User not found"}), 404
 
-    history_ids = user.get("history", [])
-    history_events = [{"id": id, **DB["events"][id]} for id in history_ids if id in DB["events"]]
+        history_records = VolunteerHistory.query.filter_by(user_id=user_creds.id).all()
 
-    return jsonify(history_events), 200
+        event_list = []
+        for record in history_records:
+            event = record.event
+            if event:
+                event_list.append({
+                    "event_id": event.id,
+                    "event_name": event.event_name,
+                    "participation_date": record.participation_date.isoformat()
+                })
 
-@app.route('/user/<string:email>/events', methods=['GET'])
-def get_user_events(email):
-    """Get all events a user has signed up for (for notifications page)"""
-    user = DB["users"].get(email)
-    if not user:
-        return jsonify({"message": "User not found"}), 404
+        return jsonify(event_list), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /history/{email} ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-    # Get events from accepted invites, not from history
-    # History is for completed events only
-    user_invites = [inv for inv in DB["invites"] if inv['user_email'] == email and inv['status'] == 'accepted']
 
-    # Create list of events with full details
-    events = []
-    for invite in user_invites:
-        event_id = invite['event_id']
-        if event_id in DB["events"]:
-            event = DB["events"][event_id]
-            events.append({
-                "id": event_id,
-                "event_name": event["event_name"],
-                "description": event["description"],
-                "location": event["location"],
-                "event_date": event["event_date"],
-                "required_skills": event.get("required_skills", []),
-                "urgency": event.get("urgency", ""),
-                "completed": invite.get("completed", False)
-            })
+@app.route('/matching/<int:event_id>', methods=['GET'])
+def get_volunteer_matches(event_id):
+    """Find volunteers who are a good match for an event."""
+    try:
+        event = db.session.get(EventDetails, event_id)
+        if not event:
+            return jsonify({"message": "Event not found"}), 404
+            
+        if not event.skills:
+             return jsonify([]), 200 # No skills to match
 
-    return jsonify({"events": events}), 200
+        event_skills_set = set(skill.strip().lower() for skill in event.skills.split(','))
+        
+        # Get all volunteers
+        volunteers = UserCredentials.query.filter_by(role='volunteer').all()
+        
+        matches = []
+        for user_creds in volunteers:
+            profile = user_creds.profile
+            if not profile or not profile.skills:
+                continue
+                
+            profile_skills_set = set(skill.strip().lower() for skill in profile.skills.split(','))
+            
+            # Check for any overlapping skills
+            if event_skills_set.intersection(profile_skills_set):
+                matches.append({
+                    "email": user_creds.email,
+                    "full_name": profile.full_name,
+                    "skills": profile.skills 
+                })
+                
+        return jsonify(matches), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /matching/{event_id} ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
+# --- NEW: Get all users (for admin) ---
 @app.route('/users', methods=['GET'])
 def get_all_users():
-    """Get all users (for admin statistics and user management)"""
-    users_list = []
-    user_id = 1
-    for email, user_data in DB["users"].items():
-        profile = user_data.get("profile", {})
-        users_list.append({
-            "id": user_id,
-            "email": email,
-            "role": user_data.get("role", "volunteer"),
-            "name": profile.get("full_name", "N/A"),
-            "phone": profile.get("phone", "N/A"),
-            "profileComplete": profile is not None and len(profile) > 0
-        })
-        user_id += 1
+    """Get a list of all users for the admin panel."""
+    try:
+        users = UserCredentials.query.all()
+        user_list = []
+        for user in users:
+            profile = user.profile
+            # Construct full address from address1, city, state, zipcode
+            address_parts = []
+            if profile:
+                if profile.address1:
+                    address_parts.append(profile.address1)
+                if profile.city:
+                    address_parts.append(profile.city)
+                if profile.state:
+                    address_parts.append(profile.state)
+                if profile.zipcode:
+                    address_parts.append(profile.zipcode)
 
-    return jsonify(users_list), 200
+            full_address = ", ".join(address_parts) if address_parts else "N/A"
 
-@app.route('/notifications', methods=['GET'])
-def get_notifications():
-    """Get all notifications for admin"""
-    return jsonify(DB["notifications"]), 200
+            user_list.append({
+                "id": user.id,
+                "email": user.email,
+                "role": user.role,
+                "name": profile.full_name if profile else "N/A",  # Changed from "full_name" to "name"
+                "address": full_address  # Added address field
+            })
+        return jsonify(user_list), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /users ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-@app.route('/notifications/<int:notification_id>/read', methods=['PUT'])
-def mark_notification_read(notification_id):
-    """Mark a notification as read"""
-    for notification in DB["notifications"]:
-        if notification["id"] == notification_id:
-            notification["read"] = True
-            return jsonify({"message": "Notification marked as read"}), 200
-    return jsonify({"message": "Notification not found"}), 404
-
-@app.route('/activity', methods=['GET'])
-def get_activity():
-    """Get recent activity log"""
-    return jsonify(DB["activity_log"]), 200
 
 @app.route('/users/<string:email>', methods=['PUT', 'DELETE'])
-def modify_user(email):
-    """Update or delete a specific user by email"""
-    if email not in DB["users"]:
-        return jsonify({"message": "User not found"}), 404
+def manage_user(email):
+    """Update or delete a user."""
 
     if request.method == 'PUT':
         try:
+            user = UserCredentials.query.filter_by(email=email).first()
+            if not user:
+                return jsonify({"message": "User not found"}), 404
+
             data = request.json
-            user = DB["users"][email]
 
             # Update role if provided
             if 'role' in data:
-                user['role'] = data['role']
+                user.role = data['role']
 
-            # Update profile fields if provided
-            if 'name' in data and user.get('profile'):
-                user['profile']['full_name'] = data['name']
+            # Update name if provided
+            if 'name' in data:
+                if user.profile:
+                    user.profile.full_name = data['name']
+                else:
+                    # Create profile if it doesn't exist
+                    new_profile = UserProfile(
+                        id=user.id,
+                        full_name=data['name']
+                    )
+                    db.session.add(new_profile)
 
-            return jsonify({"message": "User updated successfully", "user": {"email": email, **user}}), 200
+            db.session.commit()
+            return jsonify({"message": "User updated successfully"}), 200
+
         except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN PUT /users/{email} ---: {e}", file=sys.stderr)
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
     if request.method == 'DELETE':
-        del DB["users"][email]
-        return jsonify({"message": "User deleted successfully"}), 200
-
-# -Invite/Request Endpoints 
-
-@app.route('/invites', methods=['GET', 'POST'])
-def manage_invites():
-    """Get all invites or create a new invite/request"""
-    if request.method == 'GET':
-        # Filter by status and type if provided
-        status = request.args.get('status')
-        invite_type = request.args.get('type')
-
-        filtered_invites = DB["invites"]
-        if status:
-            filtered_invites = [inv for inv in filtered_invites if inv['status'] == status]
-        if invite_type:
-            filtered_invites = [inv for inv in filtered_invites if inv['type'] == invite_type]
-
-        return jsonify(filtered_invites), 200
-
-    if request.method == 'POST':
         try:
-            data = request.json
-            event_id = data['event_id']
+            user = UserCredentials.query.filter_by(email=email).first()
+            if not user:
+                return jsonify({"message": "User not found"}), 404
 
-            # Check if event exists and is open
-            event = DB["events"].get(event_id)
-            if not event:
-                return jsonify({"message": "Event not found"}), 404
+            # Delete related records first
+            if user.profile:
+                db.session.delete(user.profile)
 
-            # Check and update event status
-            check_and_close_event(event_id)
+            # Delete volunteer history
+            VolunteerHistory.query.filter_by(user_id=user.id).delete()
 
-            # Check if event is closed
-            if event.get("status") == "closed":
-                return jsonify({"message": "This event is now closed and no longer accepting volunteers"}), 403
+            # Delete invites
+            EventInvite.query.filter_by(user_id=user.id).delete()
 
-            # Check for existing pending or accepted invite/request for this user and event
-            existing_invite = next(
-                (inv for inv in DB["invites"]
-                 if inv['user_email'] == data['user_email']
-                 and inv['event_id'] == event_id
-                 and inv['status'] in ['pending', 'accepted']),
-                None
-            )
+            # Delete the user
+            db.session.delete(user)
+            db.session.commit()
 
-            if existing_invite:
-                if existing_invite['status'] == 'pending':
-                    return jsonify({"message": "You already have a pending request for this event"}), 409
-                elif existing_invite['status'] == 'accepted':
-                    return jsonify({"message": "You are already signed up for this event"}), 409
+            return jsonify({"message": "User deleted successfully"}), 200
 
-            invite_id = DB["invite_counter"]
-            DB["invite_counter"] += 1
-
-            invite = {
-                "id": invite_id,
-                "event_id": event_id,
-                "user_email": data['user_email'],
-                "status": "pending",
-                "type": data['type'],  # 'admin_invite' or 'user_request'
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-
-            DB["invites"].append(invite)
-
-            # Add notification based on type
-            if data['type'] == 'admin_invite':
-                event = DB["events"].get(data['event_id'])
-                event_name = event['event_name'] if event else f"Event #{data['event_id']}"
-                add_notification(f"You've been invited to: {event_name}", "info")
-            elif data['type'] == 'user_request':
-                event = DB["events"].get(data['event_id'])
-                event_name = event['event_name'] if event else f"Event #{data['event_id']}"
-                add_notification(f"{data['user_email']} requested to join: {event_name}", "info")
-
-            return jsonify({"message": "Invite/request created successfully", "invite": invite}), 201
         except Exception as e:
+            db.session.rollback()
+            print(f"--- 500 ERROR IN DELETE /users/{email} ---: {e}", file=sys.stderr)
             return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-@app.route('/invites/<int:invite_id>', methods=['PUT', 'DELETE'])
-def modify_invite(invite_id):
-    """Update or delete an invite"""
-    invite = next((inv for inv in DB["invites"] if inv["id"] == invite_id), None)
-
-    if not invite:
-        return jsonify({"message": "Invite not found"}), 404
-
-    if request.method == 'PUT':
-        try:
-            data = request.json
-            old_status = invite['status']
-            new_status = data.get('status', invite['status'])
-            invite['status'] = new_status
-
-            # If invite is being accepted, check if event should be closed
-            if old_status != 'accepted' and new_status == 'accepted':
-                check_and_close_event(invite['event_id'])
-
-            # Note: History is now only for completed events, not accepted invites
-            # Events are added to history when marked as completed via the /complete endpoint
-
-            return jsonify({"message": "Invite updated successfully", "invite": invite}), 200
-        except Exception as e:
-            return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
-
-    if request.method == 'DELETE':
-        DB["invites"].remove(invite)
-        return jsonify({"message": "Invite deleted successfully"}), 200
-
-@app.route('/invites/<int:invite_id>/complete', methods=['PUT'])
-def mark_invite_complete(invite_id):
-    """Mark a volunteer's event participation as completed"""
-    invite = next((inv for inv in DB["invites"] if inv["id"] == invite_id), None)
-
-    if not invite:
-        return jsonify({"message": "Invite not found"}), 404
-
+# --- NEW: Notification Endpoints --- need to fix somehow!!!
+@app.route('/notifications', methods=['GET'])
+def get_notifications():
+    """Get all unread notifications."""
     try:
-        data = request.json
-        completed = data.get('completed', False)
-
-        invite['completed'] = completed
-
-        # If marking as completed, add to user's history
-        if completed and invite['status'] == 'accepted':
-            user_email = invite['user_email']
-            event_id = invite['event_id']
-            if user_email in DB["users"]:
-                if event_id not in DB["users"][user_email]["history"]:
-                    DB["users"][user_email]["history"].append(event_id)
-        # If unmarking as completed, remove from history
-        elif not completed and invite['status'] == 'accepted':
-            user_email = invite['user_email']
-            event_id = invite['event_id']
-            if user_email in DB["users"]:
-                if event_id in DB["users"][user_email]["history"]:
-                    DB["users"][user_email]["history"].remove(event_id)
-
-        return jsonify({"message": "Completion status updated successfully", "invite": invite}), 200
+        notifications = Notification.query.filter_by(read=False).order_by(Notification.created_at.desc()).all()
+        notif_list = []
+        for notif in notifications:
+            notif_list.append({
+                "id": notif.id,
+                "message": notif.message,
+                "type": notif.type,
+                "created_at": notif.created_at.isoformat(),
+                "read": notif.read
+            })
+        return jsonify(notif_list), 200
     except Exception as e:
+        print(f"--- 500 ERROR IN GET /notifications ---: {e}", file=sys.stderr)
         return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-@app.route('/invites/user/<string:email>', methods=['GET'])
-def get_user_invites(email):
-    """Get all invites for a specific user with optional filtering"""
-    user_invites = [inv for inv in DB["invites"] if inv['user_email'] == email]
 
-    # Filter by status and type if provided
-    status = request.args.get('status')
-    invite_type = request.args.get('type')
+@app.route('/notifications/<int:notif_id>/read', methods=['PUT'])
+def mark_notification_read(notif_id):
+    """Mark a notification as read."""
+    try:
+        notif = db.session.get(Notification, notif_id)
+        if not notif:
+            return jsonify({"message": "Notification not found"}), 404
 
-    if status:
-        user_invites = [inv for inv in user_invites if inv['status'] == status]
-    if invite_type:
-        user_invites = [inv for inv in user_invites if inv['type'] == invite_type]
+        notif.read = True
+        db.session.commit()
+        return jsonify({"message": "Notification marked as read"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"--- 500 ERROR IN PUT /notifications/{notif_id}/read ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
 
-    # Enrich with event details
-    enriched_invites = []
-    for invite in user_invites:
-        event = DB["events"].get(invite['event_id'])
-        if event:
-            enriched_invites.append({
-                **invite,
-                "event": event
+
+# --- Activity Endpoint ---
+@app.route('/activity', methods=['GET'])
+def get_activity():
+    """Get recent activity for admin dashboard."""
+    try:
+        activity_list = []
+
+        # Get recent user registrations (last 50)
+        recent_users = UserCredentials.query.order_by(UserCredentials.id.desc()).limit(50).all()
+        for user in recent_users:
+            # Approximate creation time - using ID as proxy for time since we don't have created_at
+            activity_list.append({
+                "type": "registration",
+                "user": user.email,
+                "event": None,
+                "time": datetime.now(timezone.utc).isoformat()  # Placeholder time
             })
-        else:
-            enriched_invites.append(invite)
 
-    return jsonify(enriched_invites), 200
+        # Get recent event signups (accepted invites)
+        recent_signups = EventInvite.query.filter_by(status='accepted').order_by(EventInvite.created_at.desc()).limit(50).all()
+        for invite in recent_signups:
+            event = invite.event
+            user = invite.user
+            activity_list.append({
+                "type": "event_signup",
+                "user": user.email if user else "Unknown",
+                "event": event.event_name if event else "Unknown Event",
+                "time": invite.created_at.isoformat()
+            })
 
-#  Main Execution 
+        # Get recent event creations (last 50 events)
+        recent_events = EventDetails.query.order_by(EventDetails.id.desc()).limit(50).all()
+        for event in recent_events:
+            # Approximate creation time - using ID as proxy
+            activity_list.append({
+                "type": "event_created",
+                "user": "admin",  # Placeholder since we don't track who created events
+                "event": event.event_name,
+                "time": datetime.now(timezone.utc).isoformat()  # Placeholder time
+            })
+
+        # Sort by time descending and limit to most recent 20
+        activity_list.sort(key=lambda x: x['time'], reverse=True)
+        activity_list = activity_list[:20]
+
+        return jsonify(activity_list), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /activity ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+# --- Static Data Endpoints ---
+
+@app.route('/data/states', methods=['GET'])
+def get_states():
+    """Get all US states for dropdowns."""
+    try:
+        states = States.query.all()
+        state_list = [{"code": s.code, "name": s.name} for s in states]
+        return jsonify(state_list), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN GET /data/states ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+SKILLS_LIST = [
+    "First Aid", "Logistics", "Event Setup", "Public Speaking",
+    "Registration", "Tech Support", "Catering", "Marketing",
+    "Fundraising", "Photography", "Social Media", "Team Leadership", "Translation"
+]
+@app.route('/data/skills', methods=['GET'])
+def get_skills():
+    """Get a static list of available skills."""
+    return jsonify(SKILLS_LIST), 200
+
+
+# --- Reporting Endpoints (CSV) ---
+
+@app.route('/reports/volunteer_history.csv', methods=['GET'])
+def report_volunteer_history_csv():
+    """Generate a CSV report of all volunteers and their history."""
+    try:
+        # Use an in-memory string buffer
+        si = io.StringIO()
+        cw = csv.writer(si)
+        
+        # Write Header
+        headers = [
+            "Volunteer Email", "Role", "Full Name", "City", "State", 
+            "Skills", "Event Name", "Event Date", "Participation Date"
+        ]
+        cw.writerow(headers)
+        
+        # Get all volunteers
+        volunteers = UserCredentials.query.filter_by(role='volunteer').all()
+        
+        for user in volunteers:
+            profile = user.profile
+            base_info = [
+                user.email, user.role,
+                profile.full_name if profile else "N/A",
+                profile.city if profile else "N/A",
+                profile.state if profile else "N/A",
+                profile.skills if profile else "N/A"
+            ]
+            
+            history = user.volunteer_history
+            if not history:
+                cw.writerow(base_info + ["N/A (No history)", "N/A", "N/A"])
+            else:
+                for record in history:
+                    event = record.event
+                    row = base_info + [
+                        event.event_name if event else "Unknown Event",
+                        event.event_date.strftime('%Y-%m-%d') if event and event.event_date else "N/A",
+                        record.participation_date.isoformat()
+                    ]
+                    cw.writerow(row)
+                    
+        # Prepare response
+        output = make_response(si.getvalue())
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        output.headers["Content-Disposition"] = f"attachment; filename=volunteer_history_report_{today_str}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+    except Exception as e:
+        print(f"--- 500 ERROR IN CSV REPORT (Volunteers) ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+@app.route('/reports/event_assignments.csv', methods=['GET'])
+def report_event_assignments_csv():
+    """Generate a CSV report of all events and their assigned volunteers."""
+    try:
+        si = io.StringIO()
+        cw = csv.writer(si)
+        
+        # Write Header
+        headers = [
+            "Event ID", "Event Name", "Event Date", "Event Location",
+            "Assigned Volunteer Email", "Volunteer Full Name", "Volunteer Skills"
+        ]
+        cw.writerow(headers)
+        
+        events = EventDetails.query.all()
+        
+        for event in events:
+            base_info = [
+                event.id,
+                event.event_name,
+                event.event_date.strftime('%Y-%m-%d') if event.event_date else "N/A",
+                event.location if event.location else "N/A"
+            ]
+            
+            # Get approved volunteers
+            history = event.volunteers
+            if not history:
+                cw.writerow(base_info + ["N/A (No volunteer assigned)", "N/A", "N/A"])
+            else:
+                for record in history:
+                    user = record.user
+                    profile = user.profile
+                    row = base_info + [
+                        user.email,
+                        profile.full_name if profile else "N/A",
+                        profile.skills if profile else "N/A"
+                    ]
+                    cw.writerow(row)
+
+        # Prepare response
+        output = make_response(si.getvalue())
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        output.headers["Content-Disposition"] = f"attachment; filename=event_assignments_report_{today_str}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+    except Exception as e:
+        print(f"--- 500 ERROR IN CSV REPORT (Events) ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+# --- Reporting Endpoints (JSON for Preview) ---
+
+@app.route('/reports/json/volunteer_history', methods=['GET'])
+def report_volunteer_history_json():
+    """Generate a JSON report of all volunteers and their history."""
+    try:
+        volunteers = UserCredentials.query.filter_by(role='volunteer').all()
+        report_data = []
+        
+        for user in volunteers:
+            profile = user.profile
+            history = user.volunteer_history
+            
+            if not history:
+                report_data.append({
+                    "Email": user.email,
+                    "Full Name": profile.full_name if profile else "N/A",
+                    "Skills": profile.skills if profile else "N/A",
+                    "Event Name": "N/A (No history)",
+                    "Event Date": "N/A"
+                })
+            else:
+                for record in history:
+                    event = record.event
+                    report_data.append({
+                        "Email": user.email,
+                        "Full Name": profile.full_name if profile else "N/A",
+                        "Skills": profile.skills if profile else "N/A",
+                        "Event Name": event.event_name if event else "Unknown Event",
+                        "Event Date": event.event_date.strftime('%Y-%m-%d') if event and event.event_date else "N/A"
+                    })
+                    
+        return jsonify(report_data), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN JSON REPORT (Volunteers) ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+@app.route('/reports/json/event_assignments', methods=['GET'])
+def report_event_assignments_json():
+    """Generate a JSON report of all events and their assigned volunteers."""
+    try:
+        events = EventDetails.query.all()
+        report_data = []
+        
+        for event in events:
+            history = event.volunteers
+            
+            if not history:
+                report_data.append({
+                    "Event Name": event.event_name,
+                    "Event Date": event.event_date.strftime('%Y-%m-%d') if event.event_date else "N/A",
+                    "Location": event.location if event.location else "N/A",
+                    "Volunteer": "N/A (No volunteer assigned)",
+                    "Volunteer Skills": "N/A"
+                })
+            else:
+                for record in history:
+                    user = record.user
+                    profile = user.profile
+                    report_data.append({
+                        "Event Name": event.event_name,
+                        "Event Date": event.event_date.strftime('%Y-%m-%d') if event.event_date else "N/A",
+                        "Location": event.location if event.location else "N/A",
+                        "Volunteer": user.email,
+                        "Volunteer Skills": profile.skills if profile else "N/A"
+                    })
+                    
+        return jsonify(report_data), 200
+    except Exception as e:
+        print(f"--- 500 ERROR IN JSON REPORT (Events) ---: {e}", file=sys.stderr)
+        return jsonify({"message": "An internal error occurred", "error": str(e)}), 500
+
+
+# --- Database Initializer (Seeder) ---
+
+def init_db():
+    """Create all tables and populate static/seed data."""
+    print("Checking database...")
+    db.create_all()
+
+    # Populate States
+    if States.query.count() == 0:
+        print("Populating states...")
+        states_data = [
+            States(code='AL', name='Alabama'), States(code='AK', name='Alaska'),
+            States(code='AZ', name='Arizona'), States(code='AR', name='Arkansas'),
+            States(code='CA', name='California'), States(code='CO', name='Colorado'),
+            States(code='CT', name='Connecticut'), States(code='DE', name='Delaware'),
+            States(code='FL', name='Florida'), States(code='GA', name='Georgia'),
+            States(code='HI', name='Hawaii'), States(code='ID', name='Idaho'),
+            States(code='IL', name='Illinois'), States(code='IN', name='Indiana'),
+            States(code='IA', name='Iowa'), States(code='KS', name='Kansas'),
+            States(code='KY', name='Kentucky'), States(code='LA', name='Louisiana'),
+            States(code='ME', name='Maine'), States(code='MD', name='Maryland'),
+            States(code='MA', name='Massachusetts'), States(code='MI', name='Michigan'),
+            States(code='MN', name='Minnesota'), States(code='MS', name='Mississippi'),
+            States(code='MO', name='Missouri'), States(code='MT', name='Montana'),
+            States(code='NE', name='Nebraska'), States(code='NV', name='Nevada'),
+            States(code='NH', name='New Hampshire'), States(code='NJ', name='New Jersey'),
+            States(code='NM', name='New Mexico'), States(code='NY', name='New York'),
+            States(code='NC', name='North Carolina'), States(code='ND', name='North Dakota'),
+            States(code='OH', name='Ohio'), States(code='OK', name='Oklahoma'),
+            States(code='OR', name='Oregon'), 
+            States(code='PA', name='Pennsylvania'), 
+            States(code='RI', name='Rhode Island'), States(code='SC', name='South Carolina'),
+            States(code='SD', name='South Dakota'), States(code='TN', name='Tennessee'),
+            States(code='TX', name='Texas'), States(code='UT', name='Utah'),
+            States(code='VT', name='Vermont'), States(code='VA', name='Virginia'),
+            States(code='WA', name='Washington'), States(code='WV', name='West Virginia'),
+            States(code='WI', name='Wisconsin'), States(code='WY', name='Wyoming')
+        ]
+        db.session.bulk_save_objects(states_data)
+        db.session.commit()
+    
+    # Populate default Admin user
+    if not UserCredentials.query.filter_by(email="admin@example.com").first():
+        print("Creating admin user...")
+        admin = UserCredentials(email="admin@example.com", role="admin")
+        admin.set_password("AdminPassword1")
+        db.session.add(admin)
+        db.session.commit() # Commit admin first to get an ID
+
+        # Create profile, linking the ID
+        admin_profile = UserProfile(
+            id=admin.id,
+            full_name="Admin User",
+            address1="123 Admin Way",
+            address2=None,
+            city="Houston",
+            state="TX",
+            zipcode="77001",
+            skills="Team Leadership, Management"
+        )
+        db.session.add(admin_profile)
+        db.session.commit()
+
+    # Populate default Volunteer user
+    if not UserCredentials.query.filter_by(email="volunteer@example.com").first():
+        print("Creating volunteer user...")
+        vol = UserCredentials(email="volunteer@example.com", role="volunteer")
+        vol.set_password("Password1")
+        db.session.add(vol)
+        db.session.commit() # Commit volunteer to get ID
+        
+        #Add profile for the volunteer
+        vol_profile = UserProfile(
+            id=vol.id,
+            full_name="John Doe",
+            address1="123 Main St", 
+            address2=None, 
+            city="Houston",
+            state="TX",
+            zipcode="77002",
+            skills="First Aid, Logistics",
+            availability="2026-12-01, 2026-12-15"
+        )
+        db.session.add(vol_profile)
+        db.session.commit()
+
+    # Populate default Events
+    if EventDetails.query.count() == 0:
+        print("Populating events...")
+        event1 = EventDetails(
+            event_name="Community Food Drive",
+            location="Downtown Community Center",
+            city="Houston",
+            state="TX",
+            zipcode="77002",
+            skills="Logistics, Event Setup",
+            event_date=date(2026, 12, 1)
+        )
+        event2 = EventDetails(
+            event_name="Park Cleanup Day",
+            location="Memorial Park",
+            city="Houston",
+            state="TX",
+            zipcode="77056",
+            skills="Event Setup, General Labor",
+            event_date=date(2026, 11, 20)
+        )
+        db.session.add_all([event1, event2])
+        db.session.commit()
+    
+    print("Database check complete.")
+
+
+# --- Main Execution ---
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
-        print("Database initialized at:", os.path.abspath("voluunteer.db"))
-    app.run(debug=True, port=5002)
+        init_db() # Create tables and seed data
+    
+    print(f"Database initialized at: {os.path.join(BASE_DIR, 'volunteer.db')}")
+    # Run the app on port 5001
+    app.run(debug=True, port=5001)

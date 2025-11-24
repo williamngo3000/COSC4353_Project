@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme, IconButton, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import { Box, Typography, useTheme, IconButton, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { tokens } from "../../../theme";
 // import { mockDataUsers } from "../../../data/mockDataUsers";
@@ -19,6 +19,7 @@ const Users = ({ addNotification }) => {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Get current logged-in user's email
   useEffect(() => {
@@ -157,7 +158,7 @@ const Users = ({ addNotification }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: selectedEvent,
-          user_email: selectedUser.email,
+          email: selectedUser.email,
           type: 'admin_invite'
         }),
       });
@@ -189,10 +190,10 @@ const Users = ({ addNotification }) => {
       editable: true,
     },
     {
-      field: "phone",
-      headerName: "Phone Number",
+      field: "address",
+      headerName: "Address",
       flex: 1,
-      editable: true,
+      editable: false,
     },
     {
       field: "email",
@@ -278,9 +279,39 @@ const Users = ({ addNotification }) => {
     },
   ];
 
+  // Filter users based on search term
+  const filteredRows = rows.filter(user => {
+    const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          user.address?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
+  });
+
   return (
     <Box m="20px" fontFamily={"sans-serif"}>
       <Header title="Users" subtitle="Managing Users" />
+
+      {/* Search Bar */}
+      <Box mb="20px" mt="20px">
+        <TextField
+          label="Search users by name, email, or address..."
+          variant="outlined"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          fullWidth
+          sx={{
+            maxWidth: '500px',
+            '& .MuiInputLabel-root': { color: colors.grey[100] },
+            '& .MuiOutlinedInput-root': {
+              color: colors.grey[100],
+              '& fieldset': { borderColor: colors.grey[100] },
+              '&:hover fieldset': { borderColor: colors.grey[100] },
+              '&.Mui-focused fieldset': { borderColor: colors.indigo[500] }
+            }
+          }}
+        />
+      </Box>
+
       <Box
         m="40px 0 0 0"
         height="75vh"
@@ -331,7 +362,7 @@ const Users = ({ addNotification }) => {
       >
         <DataGrid
           checkboxSelection
-          rows={rows}
+          rows={filteredRows}
           columns={columns}
           processRowUpdate={handleCellEdit}
           onProcessRowUpdateError={(error) => console.error(error)}

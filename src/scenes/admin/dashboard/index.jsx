@@ -1,17 +1,183 @@
-import { Box, Button, IconButton, Typography, useTheme } from "@mui/material";
-import { tokens } from "../../../theme";
+import { 
+  Box, 
+  Button, 
+  IconButton, 
+  Typography, 
+  useTheme,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  CircularProgress
+} from "@mui/material";
+// import { tokens } from "../../../theme"; // Mocked below
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import EmailIcon from "@mui/icons-material/Email";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
-import Header from "../../../components/Header";
+// import Header from "../../../components/Header"; // Mocked below
 import { useState, useEffect } from "react";
+
+
+const tokens = (mode) => {
+  const isDarkMode = mode === 'dark';
+  
+
+  const primaryLight = '#F9FAFB'; 
+  const primaryDark = '#1F2A40';  
+
+  return {
+    grey: {
+      100: isDarkMode ? '#f0f0f0' : '#333333', 
+      300: isDarkMode ? '#cecece' : '#555555',
+      400: isDarkMode ? '#a3a3a3' : '#777777',
+      500: isDarkMode ? '#666666' : '#999999', 
+    },
+
+    // This will change the main "squares" based on the mode
+    primary: {
+      400: isDarkMode ? primaryDark : primaryLight, 
+      500: isDarkMode ? '#2a2d6e' : '#E0E0E0',
+      600: isDarkMode ? '#1F2A40' : '#F5F5F5', 
+    },
+    // --- RESTORED ORIGINAL GREEN ---
+    green: {
+      500: '#4cceac',
+      600: '#389e83',
+      700: '#2f846d',
+    },
+    // --- RESTORED ORIGINAL BLUE ---
+    blue: {
+      500: '#2196f3',
+      600: '#1e88e5',
+    },
+    // Kept original red for "Reject" / "Danger" actions
+    red: {
+      500: '#f44336', 
+      700: '#d32f2f',
+    },
+  };
+};
+
+const Header = ({ title, subtitle }) => {
+  const theme = useTheme();
+  const colors = tokens(theme.palette.mode);
+  return (
+    <Box mb="20px">
+      <Typography
+        variant="h2"
+        color={colors.grey[100]} 
+        fontWeight="bold"
+        sx={{ mb: "5px" }}
+      >
+        {title}
+      </Typography>
+      <Typography variant="h5" color={colors.green[500]}> {/* Will be GREEN */}
+        {subtitle}
+      </Typography>
+    </Box>
+  );
+};
+
+// --- ReportPreviewTable ---
+const ReportPreviewTable = ({ data, isLoading, colors }) => {
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  if (isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+        <CircularProgress sx={{ color: colors.green[500] }} /> {/* Will be GREEN */}
+      </Box>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <Box p="15px" textAlign="center">
+        <Typography color={colors.grey[300]}>
+          No data to display for this report.
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Get all unique headers from the first item
+  const headers = Object.keys(data[0]);
+
+  return (
+    <TableContainer 
+      component={Paper} 
+      sx={{ 
+        backgroundColor: 'transparent',
+        boxShadow: 'none',
+        maxHeight: '200px', // Make table scrollable
+        overflow: 'auto',
+      }}
+    >
+      <Table stickyHeader size="small">
+        <TableHead>
+          <TableRow>
+            {headers.map((header) => (
+              <TableCell
+                key={header}
+                sx={{
+                  backgroundColor: isDarkMode ? colors.primary[500] : '#E0E0E0', // Darker header for both modes
+                  color: colors.grey[100],
+                  fontWeight: 'bold',
+                  borderBottom: `2px solid ${colors.green[500]}`, // Will be GREEN
+                }}
+              >
+                {header}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {data.map((row, rowIndex) => (
+            <TableRow 
+              key={rowIndex} 
+              sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+            >
+              {headers.map((header) => (
+                <TableCell 
+                  key={`${rowIndex}-${header}`}
+                  sx={{ 
+                    color: colors.grey[300],
+                    borderBottom: `1px solid ${colors.primary[500]}`, // Border color
+                  }}
+                >
+                  {row[header]}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+};
+
 
 const Dashboard = () => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const [pendingRequests, setPendingRequests] = useState([]);
+  
+  // --- NEW STATE FOR REPORT PREVIEW ---
+  const [reportTabValue, setReportTabValue] = useState(0);
+  const [reportData, setReportData] = useState([]);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
 
+  // --- NEW: Generate today's date string for filenames ---
+  const todayStr = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+
+  // --- THIS FUNCTION IS NOW FULLY SUPPORTED BY THE BACKEND ---
   const fetchPendingRequests = async () => {
     try {
       const response = await fetch('http://localhost:5001/invites?status=pending&type=user_request');
@@ -20,7 +186,6 @@ const Dashboard = () => {
       }
       const data = await response.json();
 
-      // Enrich with event details
       const enrichedRequests = await Promise.all(
         data.map(async (request) => {
           try {
@@ -30,7 +195,7 @@ const Dashboard = () => {
               return { ...request, event };
             }
           } catch (err) {
-            console.error('Error fetching event details:', err);
+            console.error(`Error fetching event details for event ${request.event_id}:`, err);
           }
           return request;
         })
@@ -43,14 +208,40 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    // Initial fetch
     fetchPendingRequests();
-
-    // Polling every 5 seconds
     const interval = setInterval(fetchPendingRequests, 5000);
-
     return () => clearInterval(interval);
   }, []);
+
+  // --- NEW EFFECT FOR FETCHING REPORT DATA ---
+  useEffect(() => {
+    const fetchReportData = async () => {
+      setIsLoadingReport(true);
+      setReportData([]); // Clear previous data
+      
+      let endpoint = '';
+      if (reportTabValue === 0) {
+        endpoint = 'http://localhost:5001/reports/json/volunteer_history';
+      } else {
+        endpoint = 'http://localhost:5001/reports/json/event_assignments';
+      }
+      
+      try {
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          throw new Error('Failed to fetch report data');
+        }
+        const data = await response.json();
+        setReportData(data);
+      } catch (error) {
+        console.error('Error fetching report data:', error);
+      } finally {
+        setIsLoadingReport(false);
+      }
+    };
+    
+    fetchReportData();
+  }, [reportTabValue]); // Re-fetch when the tab changes
 
   const handleApprove = async (inviteId) => {
     try {
@@ -63,13 +254,10 @@ const Dashboard = () => {
       if (!response.ok) {
         throw new Error('Failed to approve request');
       }
-
-      // Optimistic update
       setPendingRequests(prev => prev.filter(req => req.id !== inviteId));
       console.log('Request approved successfully');
     } catch (error) {
       console.error('Error approving request:', error);
-      alert('Failed to approve request. Please try again.');
     }
   };
 
@@ -84,14 +272,17 @@ const Dashboard = () => {
       if (!response.ok) {
         throw new Error('Failed to reject request');
       }
-
-      // Optimistic update
       setPendingRequests(prev => prev.filter(req => req.id !== inviteId));
       console.log('Request rejected successfully');
-    } catch (error) {
+    } catch (error)
+    {
       console.error('Error rejecting request:', error);
-      alert('Failed to reject request. Please try again.');
     }
+  };
+  
+  // --- Handle Tab Change ---
+  const handleTabChange = (event, newValue) => {
+    setReportTabValue(newValue);
   };
 
   return (
@@ -99,9 +290,7 @@ const Dashboard = () => {
       {/* HEADER */}
       <Box display="flex" justifyContent="space-between" alignItems="center">
         <Header title="DASHBOARD" subtitle="Welcome to your dashboard"/>
-  
         <Box />
-
       </Box>
       
       {/* GRID & BOXES ON DASHBOARD MAIN */}
@@ -111,113 +300,122 @@ const Dashboard = () => {
         gridAutoRows="140px"
         gap="20px"
       >
-        {/* ROW 1 */}
-        {/* <Box
-          gridColumn="span 3"
-          backgroundColor={colors.primary[400]}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        > */}
-          {/* FIRST BOX */}
-          {/* <Typography>
-            TEMP PLACEHOLDER
-          </Typography>
+        {/* ROW 1 (Commented out as per your file) */}
 
-        </Box>
-        <Box
-          gridColumn="span 3"
-          backgroundColor={colors.primary[400]}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Typography>
-            TEMP PLACEHOLDER
-          </Typography>
-
-        </Box>
-        <Box
-          gridColumn="span 3"
-          backgroundColor={colors.primary[400]}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Typography>
-            TEMP PLACEHOLDER
-          </Typography>
-
-        </Box>
-        <Box
-          gridColumn="span 3"
-          backgroundColor={colors.primary[400]}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Typography>
-            TEMP PLACEHOLDER
-          </Typography>
-
-        </Box> */} 
-
-
-        {/* ROW 2 */}
+        {/* --- ROW 2: REPORT BOX (NOW TALLER & THEME-AWARE) --- */}
         <Box
           gridColumn="span 8"
-          gridRow="span 2"
-          backgroundColor={colors.primary[400]}
+          gridRow="span 4" // --- INCREASED HEIGHT to span 4 rows
+          backgroundColor={colors.primary[400]} // Will be LIGHT or DARK
+          p="20px"
+          display="flex"
+          flexDirection="column"
+          borderRadius="8px" // Added border radius
         >
+          {/* --- REPORT HEADER --- */}
           <Box
-            mt="25px"
-            p="0 30px"
-            display="flex "
+            display="flex"
             justifyContent="space-between"
             alignItems="center"
+            mb="10px"
           >
             <Box>
               <Typography
                 variant="h3"
                 fontWeight="600"
-                color={colors.grey[100]}
+                color={colors.grey[100]} // Correct text color
               >
-                REPORT
+                REPORTS
               </Typography>
               <Typography
                 variant="h5"
                 fontWeight="bold"
-                color={colors.grey[100]}
+                color={colors.grey[100]} // Correct text color
               >
-                Have some form of report here for admins to download user information on volunteering + their history
+                Preview data and download reports.
               </Typography>
             </Box>
-            <Box>
-              <IconButton>
-                {/* Button here to download files as listed in the "Complete Project with Demo */}
-                <DownloadOutlinedIcon
-                  sx={{ fontSize: "26px", color: colors.green[500] }}
-                />
-              </IconButton>
+            
+            {/* --- DOWNLOAD BUTTONS --- */}
+            <Box display="flex" gap="10px">
+              <a 
+                href="http://localhost:5001/reports/volunteer_history.csv" 
+                download={`volunteer_history_${todayStr}.csv`}
+                style={{ textDecoration: 'none' }}
+              >
+                <Button
+                  variant="contained"
+                  sx={{
+                    backgroundColor: colors.green[500], // GREEN
+                    color: '#FFFFFF', // White text on buttons
+                    '&:hover': { backgroundColor: colors.green[600] },
+                    fontWeight: 'bold',
+                    padding: '6px 16px',
+                  }}
+                  startIcon={<DownloadOutlinedIcon />}
+                >
+                  DOWNLOAD VOLUNTEER HISTORY
+                </Button>
+              </a>
+              <a 
+                href="http://localhost:5001/reports/event_assignments.csv" 
+                download={`event_assignments_${todayStr}.csv`}
+                style={{ textDecoration: 'none' }}
+              >
+                <Button
+                  variant="contained"
+                  sx={{
+                    backgroundColor: colors.blue[500], // BLUE
+                    color: '#FFFFFF', // White text on buttons
+                    '&:hover': { backgroundColor: colors.blue[600] },
+                    fontWeight: 'bold',
+                    padding: '6px 16px',
+                  }}
+                  startIcon={<DownloadOutlinedIcon />}
+                >
+                  DOWNLOAD EVENT ASSIGNMENTS
+                </Button>
+              </a>
             </Box>
           </Box>
-          <Typography
-            fontWeight="bold"
-            fontSize={20}
-            mt="25px"
-            p="0 250px"
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
+          
+          {/* --- NEW: REPORT PREVIEW TABS (Indicator will be GREEN) --- */}
+          <Box sx={{ borderBottom: 1, borderColor: colors.primary[500] }}>
+            <Tabs 
+              value={reportTabValue} 
+              onChange={handleTabChange} 
+              aria-label="Report preview tabs"
+              textColor="inherit"
+              TabIndicatorProps={{ style: { backgroundColor: colors.green[500] } }} // GREEN
+              sx={{ color: colors.grey[300] }}
+            >
+              <Tab label="Volunteer History Preview" sx={{ color: colors.grey[100] }} />
+              <Tab label="Event Assignments Preview" sx={{ color: colors.grey[100] }} />
+            </Tabs>
+          </Box>
+          
+          {/* --- NEW: PREVIEW TABLE (Fills remaining space) --- */}
+          <Box
+            mt="10px"
+            flex="1" // This makes the box fill the remaining space
+            overflow="hidden" // Prevents its children from overflowing the grid
           >
-            Maybe preview of table here?
-          </Typography>
+            <ReportPreviewTable 
+              data={reportData} 
+              isLoading={isLoadingReport} 
+              colors={colors} 
+            />
+          </Box>
+
         </Box>
+        
+        {/* --- PENDING REQUESTS BOX  --- */}
         <Box
           gridColumn="span 4"
-          gridRow="span 2"
-          backgroundColor={colors.primary[400]}
+          gridRow="span 4" // --- INCREASED HEIGHT to span 4 rows
+          backgroundColor={colors.primary[400]} // Will be LIGHT or DARK
           overflow="auto"
+          borderRadius="8px" // Added border radius
         >
           <Box
             display="flex"
@@ -226,6 +424,12 @@ const Dashboard = () => {
             borderBottom={`4px solid ${colors.primary[500]}`}
             colors={colors.grey[100]}
             p="15px"
+            sx={{ 
+              position: "sticky", 
+              top: 0, 
+              zIndex: 1, 
+              backgroundColor: colors.primary[400] // Match background
+            }}
           >
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               Pending Requests
@@ -252,7 +456,7 @@ const Dashboard = () => {
                 p="15px"
               >
                 <Box flex="1">
-                  <Typography color={colors.green[500]} fontWeight="600">
+                  <Typography color={colors.green[500]} fontWeight="600"> {/* GREEN */}
                     {request.user_email}
                   </Typography>
                   <Typography variant="body2" color={colors.grey[300]}>
@@ -268,7 +472,7 @@ const Dashboard = () => {
                   <IconButton
                     onClick={() => handleApprove(request.id)}
                     sx={{
-                      color: colors.green[500],
+                      color: colors.green[500], // GREEN
                       '&:hover': { backgroundColor: colors.green[700] }
                     }}
                     title="Approve request"
@@ -278,7 +482,7 @@ const Dashboard = () => {
                   <IconButton
                     onClick={() => handleReject(request.id)}
                     sx={{
-                      color: colors.red[500],
+                      color: colors.red[500], // Stays danger red
                       '&:hover': { backgroundColor: colors.red[700] }
                     }}
                     title="Reject request"

@@ -127,6 +127,52 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
         }
     };
 
+    const handleUnregister = async (eventId, eventName) => {
+        const userEmail = loggedInUser.email || localStorage.getItem('userEmail');
+
+        if (!userEmail) {
+            addNotification('Please log in to unregister from an event', 'error');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to unregister from "${eventName}"?`)) {
+            return;
+        }
+
+        try {
+            // Find the invite ID for this user and event
+            const response = await fetch(`http://localhost:5001/invites/user/${encodeURIComponent(userEmail)}`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch invites');
+            }
+
+            const invites = await response.json();
+            const invite = invites.find(inv => inv.event_id === eventId && inv.status === 'accepted');
+
+            if (!invite) {
+                addNotification('No active signup found for this event', 'error');
+                return;
+            }
+
+            // Delete the invite
+            const deleteResponse = await fetch(`http://localhost:5001/invites/${invite.id}`, {
+                method: 'DELETE',
+            });
+
+            if (!deleteResponse.ok) {
+                throw new Error('Failed to unregister from event');
+            }
+
+            addNotification(`Successfully unregistered from "${eventName}"`, 'success');
+
+            // Refresh events
+            fetchUserEvents();
+        } catch (error) {
+            console.error('Error unregistering from event:', error);
+            addNotification('Failed to unregister. Please try again.', 'error');
+        }
+    };
+
     const getDaysUntilEvent = (eventDate) => {
         const now = new Date();
         const event = new Date(eventDate);
@@ -298,6 +344,23 @@ const VolunteerNotifications = ({ loggedInUser, addNotification }) => {
                                                     <strong>Skills:</strong> {event.required_skills.join(', ')}
                                                 </div>
                                             )}
+                                            <div style={{ marginTop: '1rem' }}>
+                                                <button
+                                                    onClick={() => handleUnregister(event.event_id, event.event_name)}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        backgroundColor: '#dc2626',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '0.375rem',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    Unregister
+                                                </button>
+                                            </div>
                                         </div>
                                         <div
                                             style={{
