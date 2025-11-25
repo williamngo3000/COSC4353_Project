@@ -1,7 +1,10 @@
 ># **COSC4353_Project**
 :D  
 Idk, I'm confuzzled
-How to run:
+Note: Delete volunteer.db to prevent extra data or whatever; Essentially so a new database is made at all times
+
+------
+How to run:  
 Note: These commands only work for WINDOWS OS
 
 To run in vite (frontend):

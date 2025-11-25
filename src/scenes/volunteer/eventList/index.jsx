@@ -27,6 +27,9 @@ const EventList = ({ addNotification }) => {
                     requiredSkills: ev.required_skills,
                     urgency: ev.urgency,
                     date: ev.event_date,
+                    volunteerLimit: ev.volunteer_limit,
+                    currentVolunteers: ev.current_volunteers,
+                    status: ev.status,
                 }));
                 setEvents(formatted);
                 setError(null);

@@ -1,3 +1,7 @@
+'''
+    Unit tests file
+'''
+
 import unittest
 import json
 import sys
