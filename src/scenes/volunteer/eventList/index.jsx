@@ -6,6 +6,7 @@ const EventList = ({ addNotification }) => {
     const [loading, setLoading] = useState(true);
     const [requestedEvents, setRequestedEvents] = useState(new Set());
     const [acceptedEvents, setAcceptedEvents] = useState(new Set());
+    const [completedEvents, setCompletedEvents] = useState(new Set());
     const [searchTerm, setSearchTerm] = useState('');
     const [filterUrgency, setFilterUrgency] = useState('');
 
@@ -26,6 +27,9 @@ const EventList = ({ addNotification }) => {
                     requiredSkills: ev.required_skills,
                     urgency: ev.urgency,
                     date: ev.event_date,
+                    volunteerLimit: ev.volunteer_limit,
+                    currentVolunteers: ev.current_volunteers,
+                    status: ev.status,
                 }));
                 setEvents(formatted);
                 setError(null);
@@ -55,13 +59,21 @@ const EventList = ({ addNotification }) => {
                 );
                 setRequestedEvents(pending);
 
-                // Track accepted invites
+                // Track accepted invites that are not completed
                 const accepted = new Set(
                     invites
-                        .filter(inv => inv.status === 'accepted')
+                        .filter(inv => inv.status === 'accepted' && !inv.completed)
                         .map(inv => inv.event_id)
                 );
                 setAcceptedEvents(accepted);
+
+                // Track completed events
+                const completed = new Set(
+                    invites
+                        .filter(inv => inv.status === 'accepted' && inv.completed)
+                        .map(inv => inv.event_id)
+                );
+                setCompletedEvents(completed);
             }
         } catch (error) {
             console.error('Error fetching user invites:', error);
@@ -97,7 +109,7 @@ const EventList = ({ addNotification }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     event_id: eventId,
-                    user_email: userEmail,
+                    email: userEmail,
                     type: 'user_request'
                 }),
             });
@@ -214,9 +226,9 @@ const EventList = ({ addNotification }) => {
 
     // Filter events based on search and filters
     const filteredEvents = events.filter(ev => {
-        const matchesSearch = ev.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              ev.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              ev.location.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = ev.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              ev.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              ev.location?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesUrgency = !filterUrgency || ev.urgency === filterUrgency;
 
         return matchesSearch && matchesUrgency;
@@ -321,8 +333,8 @@ const EventList = ({ addNotification }) => {
                             <p>Description: {ev.description}</p>
                             <p>Location: {ev.location}</p>
                             <div>
-                                {ev.requiredSkills?.length ? (
-                                    <p>Required Skills: {ev.requiredSkills.join(', ')}</p>
+                                {ev.requiredSkills ? (
+                                    <p>Required Skills: {Array.isArray(ev.requiredSkills) ? ev.requiredSkills.join(', ') : ev.requiredSkills}</p>
                                 ) : (
                                     <p>Required Skills: None</p>
                                 )}
@@ -351,6 +363,23 @@ const EventList = ({ addNotification }) => {
                                     }}
                                 >
                                     Event Closed
+                                </button>
+                            ) : completedEvents.has(ev.id) ? (
+                                <button
+                                    disabled
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: '#16a34a',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '0.25rem',
+                                        cursor: 'not-allowed',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '500',
+                                        flex: 1
+                                    }}
+                                >
+                                    Completed ✓
                                 </button>
                             ) : acceptedEvents.has(ev.id) ? (
                                 <>

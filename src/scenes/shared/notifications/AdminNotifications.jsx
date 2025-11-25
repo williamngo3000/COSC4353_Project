@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Checkbox, useTheme } from "@mui/material";
+import { Box, useTheme } from "@mui/material";
 import { tokens } from "../../../theme";
 import PersonIcon from '@mui/icons-material/Person';
 import CheckBoxIcon from '@mui/icons-material/CheckBox';
@@ -55,15 +55,21 @@ const AdminNotifications = ({ addNotification }) => {
                 totalEvents: events.length,
                 upcomingEvents: upcomingEvents.length,
                 totalVolunteers: users.length,
-                recentRegistrations: users.filter(u => {
-                    // Placeholder: filter users registered in last 7 days
-                    // Will need to add user reg. date another time
-                    return true;
-                }).length
+                // Placeholder: filter users registered in last 7 days
+                // Will need to add user reg. date another time
+                // recentRegistrations: users.filter(u => {
+                //     return true;
+                // }).length
+                recentRegistrations: users.length
             });
 
             // Fetch real activity data from backend
             const activityRes = await fetch('http://localhost:5001/activity');
+
+            if (!activityRes.ok) {
+                throw new Error('Failed to fetch activity data');
+            }
+
             const activity = await activityRes.json();
 
             // Format activity data for display
@@ -239,6 +245,7 @@ const AdminNotifications = ({ addNotification }) => {
             </Box>
 
             {/* System Alerts Section - Expand if needed */}
+            {/*
             <Box
                 mt="30px"
                 sx={{
@@ -255,13 +262,13 @@ const AdminNotifications = ({ addNotification }) => {
                     No system alerts at this time. This section will display important notifications about events, user activity, and system status.
                 </p>
 
-                {/* Template for future alerts */}
                 <Box mt="1rem" p="1rem" sx={{ backgroundColor: colors.primary[400], borderRadius: '0.375rem' }}>
                     <p style={{ color: colors.grey[200], fontSize: '0.875rem' }}>
                         <strong>(Placeholder text here)</strong>
                     </p>
                 </Box>
             </Box>
+            */}
         </Box>
     );
 };

@@ -30,40 +30,18 @@ export default function App() {
 
     // Restore user session on app load
     useEffect(() => {
-        const restoreSession = async () => {
+        const restoreSession = () => {
             const userEmail = localStorage.getItem('userEmail');
-            
-            if (userEmail) { 
-                try { 
-                   const response = await fetch(`http://127.0.0.1:5002/api/session?email=${userEmail}`);
-                   const data = await response.json(); 
-
-                    if (response.ok) { 
-                        setLoggedInUser({ 
-                            email: data.email, 
-                            role: data.role, 
-                            profileComplete: true 
-                        });
-                    } else { 
-                      console.error("Session restore failed:", data.error);
-                      localStorage.removeItem('userEmail');
-                      localStorage.removeItem('userRole');
-
-                    }
-                } catch (error) { 
-                    console.error ("Error restroing session:", error); 
-                }
-            } else { 
             const userRole = localStorage.getItem('userRole');
-            if (userRole) {
-                // Restore user from localStorage
+
+            if (userEmail && userRole) {
                 setLoggedInUser({
                     email: userEmail,
                     role: userRole,
-                    profileComplete: true // Assume profile is complete if they were logged in
+                    profileComplete: true
                 });
             }
-        }
+
             setIsLoading(false);
         };
 

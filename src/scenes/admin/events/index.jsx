@@ -236,9 +236,9 @@ const Events = () => {
 
   // Filter events based on search and filters
   const filteredRows = rows.filter(event => {
-    const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          event.location.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = event.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          event.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          event.location?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesUrgency = !filterUrgency || event.urgency === filterUrgency;
     const matchesStatus = !filterStatus || event.status === filterStatus;
 
