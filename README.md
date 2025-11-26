@@ -92,3 +92,59 @@ The software must include the following components:
 - Volunteer History (Track volunteer participation history and performance)
 
 ```
+
+1. models.py defines the entire schema
+
+Every class = one SQL table
+
+Columns define data types, constraints, relationships
+
+JSON fields allow flexible structures
+
+SQLAlchemy translates Python → SQL
+
+2. volunteer.db is the physical SQLite database
+
+Tables created via db.create_all()
+
+Stores permanent data
+
+Enforces constraints (unique users, unique invites, foreign keys)
+
+3. app2.py is the logic layer connecting requests to the database
+
+Receives JSON from frontend
+
+Converts it to ORM objects
+
+Calls db.session.add() → stages changes
+
+Calls db.session.commit() → writes to SQLite
+
+Uses SQLAlchemy queries to read data as objects
+
+Runs business logic (matching, auto-close, notifications)
+
+Sends JSON responses back to frontend
+
+How to run 
+python3 -m venv venv 
+source venv/bin/activate 
+
+pip install -r requirements.txt
+
+volunteer.db - but the app will automatically create tables if they don't exist 
+run the backend 
+python app2.py, if everything is correct, it'll be 
+ * Running on http://127.0.0.1:5001
+ * Debug mode: on
+Database initialized at: .../Backend/volunteer.db
+to run the frontend
+cd COSC4353_Project
+npm run dev
+Test the backend
+check server
+http://localhost:5001/api/test
+should return
+{ "message": "Flask is running!" }
+
