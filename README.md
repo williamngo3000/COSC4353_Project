@@ -92,7 +92,7 @@ The software must include the following components:
 - Volunteer History (Track volunteer participation history and performance)
 
 ```
-
+3) to run coverage report, do coverage run -m pytest, coverage report -m 
 1. models.py defines the entire schema
 
 Every class = one SQL table
